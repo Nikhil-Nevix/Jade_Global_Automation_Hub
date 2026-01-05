@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+InfraAuto/
+
+# Environment files
+.env
+
+# Node
+node_modules/
+
+# OS / Editor
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+#query 
+query

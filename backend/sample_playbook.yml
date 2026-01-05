@@ -1,0 +1,66 @@
+---
+# Sample Ansible Playbook for Testing
+# This playbook performs basic system checks
+
+- name: System Health Check
+  hosts: all
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - name: Print system information
+      debug:
+        msg: "Running on {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+    - name: Check disk usage
+      shell: df -h /
+      register: disk_usage
+      changed_when: false
+
+    - name: Display disk usage
+      debug:
+        var: disk_usage.stdout_lines
+
+    - name: Check memory usage
+      shell: free -h
+      register: memory_usage
+      changed_when: false
+
+    - name: Display memory usage
+      debug:
+        var: memory_usage.stdout_lines
+
+    - name: Check system uptime
+      shell: uptime
+      register: system_uptime
+      changed_when: false
+
+    - name: Display uptime
+      debug:
+        var: system_uptime.stdout
+
+    - name: List running services (systemd)
+      shell: systemctl list-units --type=service --state=running --no-pager
+      register: running_services
+      changed_when: false
+      when: ansible_service_mgr == "systemd"
+
+    - name: Display running services count
+      debug:
+        msg: "Number of running services: {{ running_services.stdout_lines | length }}"
+      when: ansible_service_mgr == "systemd"
+
+    - name: Check for system updates (Ubuntu/Debian)
+      shell: apt list --upgradable 2>/dev/null | grep -c upgradable || true
+      register: updates_available
+      changed_when: false
+      when: ansible_os_family == "Debian"
+
+    - name: Display updates available
+      debug:
+        msg: "Updates available: {{ updates_available.stdout }}"
+      when: ansible_os_family == "Debian"
+
+    - name: Final health check status
+      debug:
+        msg: "System health check completed successfully!"

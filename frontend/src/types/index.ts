@@ -1,0 +1,247 @@
+/**
+ * TypeScript Type Definitions
+ * Matches backend API response structures
+ */
+
+// ===== User & Authentication Types =====
+
+export type UserRole = 'admin' | 'operator' | 'viewer';
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_login: string | null;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  user: User;
+}
+
+export interface TokenResponse {
+  access_token: string;
+}
+
+// ===== Server Types =====
+
+export interface Server {
+  id: number;
+  hostname: string;
+  ip_address: string;
+  os_type: string;
+  os_version?: string;
+  ssh_port: number;
+  ssh_user: string;
+  ssh_key_path?: string;
+  tags?: Record<string, any>;
+  environment?: 'dev' | 'staging' | 'production';
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServerCreateRequest {
+  hostname: string;
+  ip_address: string;
+  os_type: string;
+  os_version?: string;
+  ssh_port?: number;
+  ssh_user: string;
+  ssh_key_path?: string;
+  tags?: Record<string, any>;
+  environment?: string;
+  description?: string;
+}
+
+export interface ServerUpdateRequest {
+  hostname?: string;
+  ip_address?: string;
+  os_type?: string;
+  os_version?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_key_path?: string;
+  tags?: Record<string, any>;
+  environment?: string;
+  description?: string;
+  is_active?: boolean;
+}
+
+// ===== Playbook Types =====
+
+export interface Playbook {
+  id: number;
+  name: string;
+  description?: string;
+  file_path: string;
+  file_hash: string;
+  tags?: Record<string, any>;
+  variables?: Record<string, any>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaybookUploadRequest {
+  file: File;
+  name: string;
+  description?: string;
+  tags?: Record<string, any>;
+  variables?: Record<string, any>;
+}
+
+// ===== Job Types =====
+
+export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+
+export interface Job {
+  id: number;
+  job_id: string;
+  playbook_id: number;
+  server_id: number;
+  user_id: number;
+  status: JobStatus;
+  celery_task_id?: string;
+  extra_vars?: Record<string, any>;
+  error_message?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  playbook?: {
+    id: number;
+    name: string;
+  };
+  server?: {
+    id: number;
+    hostname: string;
+    ip_address: string;
+  };
+  user?: {
+    id: number;
+    username: string;
+  };
+}
+
+export interface JobCreateRequest {
+  playbook_id: number;
+  server_id: number;
+  extra_vars?: Record<string, any>;
+}
+
+export interface JobLog {
+  id: number;
+  line_number: number;
+  content: string;
+  log_level?: string;
+  timestamp: string;
+}
+
+export interface JobLogsResponse {
+  job_id: number;
+  logs: JobLog[];
+  total_lines: number;
+  returned_lines: number;
+}
+
+// ===== Ticket Types =====
+
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+
+export interface Ticket {
+  id: number;
+  ticket_id: string;
+  job_id: number;
+  created_by: number;
+  title: string;
+  description?: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+}
+
+export interface TicketCreateRequest {
+  job_id: number;
+  title: string;
+  description?: string;
+  priority?: TicketPriority;
+}
+
+// ===== Pagination Types =====
+
+export interface PaginationMeta {
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: PaginationMeta;
+}
+
+// ===== API Response Types =====
+
+export interface ApiError {
+  error: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
+export interface HealthResponse {
+  status: string;
+  environment: string;
+  version: string;
+}
+
+export interface JobStatistics {
+  total: number;
+  pending: number;
+  running: number;
+  success: number;
+  failed: number;
+  cancelled: number;
+  success_rate: number;
+}
+
+// ===== Filter & Query Types =====
+
+export interface ServerFilters {
+  is_active?: boolean;
+  environment?: string;
+  os_type?: string;
+  search?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface JobFilters {
+  status?: JobStatus;
+  playbook_id?: number;
+  server_id?: number;
+  user_id?: number;
+  page?: number;
+  per_page?: number;
+}
+
+export interface PlaybookFilters {
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  per_page?: number;
+}
