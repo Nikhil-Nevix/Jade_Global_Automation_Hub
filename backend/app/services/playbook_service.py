@@ -14,7 +14,7 @@ class PlaybookService:
     """Service for playbook operations"""
     
     @staticmethod
-    def create_playbook(name, file_obj, description=None, tags=None, variables=None, user_id=None):
+    def create_playbook(name, file_obj, description=None, user_id=None):
         """
         Create a new playbook and save file
         
@@ -22,8 +22,6 @@ class PlaybookService:
             name: Playbook name
             file_obj: File object from upload
             description: Playbook description
-            tags: Tags dictionary
-            variables: Default variables
             user_id: ID of user creating the playbook
         
         Returns:
@@ -62,17 +60,11 @@ class PlaybookService:
         except Exception:
             pass  # Permissions may not work on all systems during development
         
-        # Calculate file hash
-        file_hash = PlaybookService._calculate_file_hash(file_path)
-        
         # Create playbook record
         playbook = Playbook(
             name=name,
             description=description,
             file_path=file_path,
-            file_hash=file_hash,
-            tags=tags or {},
-            variables=variables or {},
             is_active=True
         )
         
@@ -118,9 +110,11 @@ class PlaybookService:
         """
         query = Playbook.query
         
-        if filters:
-            if filters.get('is_active') is not None:
-                query = query.filter_by(is_active=filters['is_active'])
+        # Default to only active playbooks unless explicitly specified
+        if filters is None or filters.get('is_active') is None:
+            query = query.filter_by(is_active=True)
+        elif filters.get('is_active') is not None:
+            query = query.filter_by(is_active=filters['is_active'])
             
             if filters.get('search'):
                 search_term = f"%{filters['search']}%"
@@ -214,18 +208,18 @@ class PlaybookService:
             user_id: ID of user deleting the playbook
         
         Raises:
-            ValueError: If playbook not found or has associated jobs
+            ValueError: If playbook not found
         """
         playbook = Playbook.query.get(playbook_id)
         if not playbook:
             raise ValueError(f"Playbook with ID {playbook_id} not found")
         
-        # Check for associated jobs
-        if playbook.jobs.count() > 0:
-            raise ValueError(f"Cannot delete playbook with existing jobs")
-        
         name = playbook.name
         file_path = playbook.file_path
+        
+        # Set playbook_id to NULL for associated jobs (instead of blocking deletion)
+        from app.models import Job
+        Job.query.filter_by(playbook_id=playbook_id).update({'playbook_id': None})
         
         # Delete file
         if os.path.exists(file_path):

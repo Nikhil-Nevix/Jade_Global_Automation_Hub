@@ -256,36 +256,42 @@ class JobService:
     @staticmethod
     def cancel_job(job_id, user_id):
         """
-        Cancel a running or pending job
+        Cancel and delete any job
         
         Args:
             job_id: Job ID
-            user_id: User ID cancelling the job
+            user_id: User ID cancelling/deleting the job
         
         Returns:
-            Updated job object
+            Deleted job object (for response)
         
         Raises:
-            ValueError: If job cannot be cancelled
+            ValueError: If job not found
         """
         job = Job.query.get(job_id)
         if not job:
             raise ValueError(f"Job with ID {job_id} not found")
         
-        if job.status not in ['pending', 'running']:
-            raise ValueError(f"Cannot cancel job with status '{job.status}'")
+        # Allow deletion of jobs in any status
         
-        job.status = 'cancelled'
-        job.completed_at = datetime.utcnow()
-        db.session.commit()
+        # Store job info for audit log before deletion
+        job_uuid = job.job_id
         
-        # Create audit log
+        # Create audit log before deletion
         JobService._create_audit_log(
             user_id=user_id,
-            action='CANCEL',
+            action='DELETE',
             resource_id=job.id,
-            details={'job_id': job.job_id}
+            details={'job_id': job_uuid, 'reason': 'terminated_by_user'}
         )
+        
+        # Delete associated job logs first (foreign key constraint)
+        from app.models import JobLog
+        JobLog.query.filter_by(job_id=job.id).delete()
+        
+        # Delete the job
+        db.session.delete(job)
+        db.session.commit()
         
         return job
     
@@ -367,7 +373,7 @@ class JobService:
             'success': success,
             'failed': failed,
             'cancelled': cancelled,
-            'success_rate': round((success / total * 100), 2) if total > 0 else 0
+            'success_rate': round(((total - failed) / total * 100), 2) if total > 0 else 0
         }
     
     @staticmethod

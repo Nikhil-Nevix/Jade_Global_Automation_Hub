@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, XCircle, Download } from 'lucide-react';
+import { ArrowLeft, RefreshCw, XCircle, Download, RotateCw } from 'lucide-react';
 import { jobsApi } from '../../api/api';
 import { useUIStore } from '../../store/uiStore';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
@@ -100,6 +100,42 @@ export const JobDetailsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleRerun = async () => {
+    if (!job || !confirm('Are you sure you want to re-run this job?')) {
+      return;
+    }
+
+    try {
+      const newJob = await jobsApi.create({
+        playbook_id: job.playbook_id,
+        server_id: job.server_id,
+      });
+      addNotification('success', 'Job re-run initiated successfully');
+      navigate(`/jobs/${newJob.id}`);
+    } catch (error: any) {
+      addNotification('error', error.response?.data?.error || 'Failed to re-run job');
+    }
+  };
+
+  const getLogLevel = (content: string) => {
+    if (content.includes('error') || content.includes('ERROR') || content.includes('Fatal')) {
+      return 'ERROR';
+    } else if (content.includes('warning') || content.includes('WARN')) {
+      return 'WARN';
+    } else {
+      return 'INFO';
+    }
+  };
+
+  const getLogLevelColor = (level: string) => {
+    const colors = {
+      WARN: 'text-yellow-400',
+      ERROR: 'text-red-400',
+      INFO: 'text-blue-400',
+    };
+    return colors[level as keyof typeof colors] || 'text-gray-400';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -123,129 +159,125 @@ export const JobDetailsPage: React.FC = () => {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/jobs')}
-            className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
+            <ArrowLeft className="h-5 w-5 text-gray-600 dark:text-gray-400" />
           </button>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Job Details</h2>
-            <p className="text-gray-600 mt-1">Job ID: {job.job_id}</p>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+              Job #{job.job_id}
+              <StatusBadge status={job.status} />
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Playbook: {job.playbook?.name || 'N/A'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              autoRefresh
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <RefreshCw className={`h-4 w-4 inline mr-1 ${autoRefresh ? 'animate-spin' : ''}`} />
-            Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
-          </button>
-          {(job.status === 'running' || job.status === 'pending') && (
-            <button
-              onClick={handleCancel}
-              className="px-3 py-2 bg-error-600 text-white rounded-md hover:bg-error-700 transition-colors text-sm font-medium"
-            >
-              <XCircle className="h-4 w-4 inline mr-1" />
-              Cancel Job
-            </button>
-          )}
-        </div>
+        <button
+          onClick={handleRerun}
+          className="flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          <RotateCw className="h-4 w-4" />
+          Re-run
+        </button>
       </div>
 
-      {/* Job info card */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div>
-            <p className="text-sm text-gray-600 mb-1">Status</p>
-            <StatusBadge status={job.status} />
-          </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-1">Playbook</p>
-            <p className="font-medium text-gray-900">{job.playbook?.name || 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-1">Server</p>
-            <p className="font-medium text-gray-900">{job.server?.hostname || 'N/A'}</p>
-            <p className="text-xs text-gray-500">{job.server?.ip_address}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-1">Triggered By</p>
-            <p className="font-medium text-gray-900">{job.user?.username || 'N/A'}</p>
-          </div>
-        </div>
-
-        <div className="mt-6 pt-6 border-t border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <p className="text-sm text-gray-600">Created At</p>
-            <p className="text-sm font-medium text-gray-900">
-              {new Date(job.created_at).toLocaleString()}
-            </p>
-          </div>
-          {job.started_at && (
-            <div>
-              <p className="text-sm text-gray-600">Started At</p>
-              <p className="text-sm font-medium text-gray-900">
-                {new Date(job.started_at).toLocaleString()}
+      {/* Main Content - Two Column Layout */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* Left Column - Execution Details */}
+        <div className="col-span-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Execution Details</h3>
+            
+            {/* Started At */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-xs uppercase mb-2">
+                <span className="text-gray-400">🕐</span>
+                Started At
+              </div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                {job.started_at 
+                  ? new Date(job.started_at).toLocaleDateString('en-US', { 
+                      month: '2-digit', 
+                      day: '2-digit', 
+                      year: 'numeric' 
+                    }) + ', ' + new Date(job.started_at).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    })
+                  : 'Not started yet'
+                }
               </p>
             </div>
-          )}
-          {job.completed_at && (
+
+            {/* Targets */}
             <div>
-              <p className="text-sm text-gray-600">Completed At</p>
-              <p className="text-sm font-medium text-gray-900">
-                {new Date(job.completed_at).toLocaleString()}
-              </p>
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-xs uppercase mb-2">
+                <span className="text-gray-400 dark:text-gray-500">📋</span>
+                Targets
+              </div>
+              <div className="flex items-center gap-2">
+                {[1, 2, 4].map((num) => (
+                  <span
+                    key={num}
+                    className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm font-medium"
+                  >
+                    {num}
+                  </span>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
-
-        {job.error_message && (
-          <div className="mt-4 p-4 bg-error-50 border border-error-200 rounded-md">
-            <p className="text-sm font-medium text-error-700">Error Message</p>
-            <p className="text-sm text-error-600 mt-1">{job.error_message}</p>
           </div>
-        )}
-      </div>
-
-      {/* Logs section */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Execution Logs ({logs.length} lines)
-          </h3>
-          <button
-            onClick={handleDownloadLogs}
-            disabled={logs.length === 0}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="h-4 w-4" />
-            Download
-          </button>
         </div>
 
-        <div className="p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto max-h-[600px]">
-          {logs.length === 0 ? (
-            <div className="text-gray-400 text-center py-8">
-              {job.status === 'pending'
-                ? 'Waiting for job to start...'
-                : 'No logs available yet'}
+        {/* Right Column - Console Output */}
+        <div className="col-span-8">
+          <div className="bg-gray-900 rounded-lg shadow overflow-hidden">
+            {/* Console Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 text-sm font-mono">Console Output</span>
+              </div>
+              <div className="flex items-center gap-2 text-blue-400 text-sm">
+                <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+                <span>{logs.length} lines</span>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-1">
-              {logs.map((log) => (
-                <div key={log.id} className="hover:bg-gray-800 px-2 py-0.5 rounded">
-                  <span className="text-gray-500 mr-2">{log.line_number}:</span>
-                  <span className="text-gray-300">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                  <span className="ml-2">{log.content}</span>
+
+            {/* Console Content */}
+            <div className="p-4 h-[600px] overflow-y-auto font-mono text-sm">
+              {logs.length === 0 ? (
+                <div className="text-gray-500 text-center py-8">
+                  No logs available yet...
                 </div>
-              ))}
+              ) : (
+                logs.map((log, index) => {
+                  const logLevel = getLogLevel(log.content);
+                  const levelColor = getLogLevelColor(logLevel);
+                  
+                  return (
+                    <div key={index} className="flex items-start gap-3 mb-1 hover:bg-gray-800 px-2 py-1 rounded">
+                      <span className="text-gray-500 text-xs flex-shrink-0 w-24">
+                        {new Date(log.timestamp).toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          hour12: false
+                        })}
+                      </span>
+                      <span className={`${levelColor} font-bold text-xs uppercase flex-shrink-0 w-12`}>
+                        {logLevel}
+                      </span>
+                      <span className="text-gray-300 flex-1 break-words">
+                        {log.content}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
               <div ref={logEndRef} />
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

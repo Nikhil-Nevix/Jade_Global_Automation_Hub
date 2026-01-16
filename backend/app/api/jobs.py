@@ -5,6 +5,7 @@ Handles job creation, monitoring, and log retrieval
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
+from app.extensions import db
 from app.services.auth_service import auth_service
 from app.services.job_service import job_service
 from app.schemas import (
@@ -230,10 +231,10 @@ def cancel_job(job_id):
         # Cancel job
         job = job_service.cancel_job(job_id, current_user_id)
         
-        # TODO: Also revoke Celery task if running
-        # from app.extensions import celery
-        # if job.celery_task_id:
-        #     celery.control.revoke(job.celery_task_id, terminate=True)
+        # Revoke Celery task if running
+        if job.celery_task_id:
+            from app.extensions import celery
+            celery.control.revoke(job.celery_task_id, terminate=True, signal='SIGKILL')
         
         return jsonify(job_schema.dump(job)), 200
     
@@ -309,7 +310,7 @@ def create_ticket_from_job(job_id):
         })), 500
 
 
-@jobs_bp.route('/statistics', methods=['GET'])
+@jobs_bp.route('/stats', methods=['GET'])
 @jwt_required()
 def get_job_statistics():
     """

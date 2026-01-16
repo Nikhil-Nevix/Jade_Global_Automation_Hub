@@ -4,7 +4,7 @@ Handles encryption/decryption of sensitive data (SSH keys, credentials)
 """
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 import base64
 import os
@@ -30,7 +30,7 @@ class CryptoService:
         """Get or create Fernet instance with derived key"""
         if self._fernet is None:
             # Derive a proper 32-byte key using PBKDF2
-            kdf = PBKDF2(
+            kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
                 salt=b'infra-automation-salt',  # In production, use unique salt per installation

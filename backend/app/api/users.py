@@ -240,11 +240,11 @@ def delete_user(user_id):
                 'message': f'User with ID {user_id} not found'
             })), 404
         
-        # Soft delete (deactivate)
-        user.is_active = False
+        # Hard delete (cascade will delete associated jobs)
+        db.session.delete(user)
         db.session.commit()
         
-        return jsonify({'message': 'User deactivated successfully'}), 200
+        return jsonify({'message': 'User and associated jobs deleted successfully'}), 200
     
     except Exception as err:
         return jsonify(error_schema.dump({

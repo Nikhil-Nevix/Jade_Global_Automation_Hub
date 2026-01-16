@@ -100,7 +100,7 @@ class AuthService:
         
         # Generate tokens
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),
             additional_claims={
                 'username': user.username,
                 'role': user.role
@@ -108,7 +108,7 @@ class AuthService:
         )
         
         refresh_token = create_refresh_token(
-            identity=user.id,
+            identity=str(user.id),
             additional_claims={
                 'username': user.username,
                 'role': user.role
@@ -141,13 +141,14 @@ class AuthService:
             New access token
         """
         current_user_id = get_jwt_identity()
-        user = User.query.get(current_user_id)
+        # Convert string ID back to integer for database query
+        user = User.query.get(int(current_user_id))
         
         if not user or not user.is_active:
             raise ValueError("Invalid user or account disabled")
         
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),
             additional_claims={
                 'username': user.username,
                 'role': user.role
@@ -162,12 +163,13 @@ class AuthService:
         Get current user by ID
         
         Args:
-            user_id: User ID from JWT
+            user_id: User ID from JWT (string)
         
         Returns:
             User object or None
         """
-        return User.query.get(user_id)
+        # Convert string ID to integer for database query
+        return User.query.get(int(user_id))
     
     @staticmethod
     def change_password(user_id, old_password, new_password):

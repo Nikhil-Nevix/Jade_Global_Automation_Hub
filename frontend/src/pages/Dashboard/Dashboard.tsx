@@ -36,7 +36,7 @@ export const Dashboard: React.FC = () => {
       
       const [jobStats, jobsResponse, serversResponse, playbooksResponse] = await Promise.all([
         api.jobs.getStatistics(),
-        api.jobs.list({ page: 1, per_page: 5 }),
+        api.jobs.list({ page: 1, per_page: 10 }), // Changed from 5 to 10
         api.servers.list({ page: 1, per_page: 1 }),
         api.playbooks.list({ page: 1, per_page: 1 }),
       ]);
@@ -64,18 +64,18 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-gray-600 mt-1">Overview of your infrastructure automation platform</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">Overview of your infrastructure automation platform</p>
       </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Servers */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Servers</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{serverCount}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Servers</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{serverCount}</p>
             </div>
             <div className="p-3 bg-primary-100 rounded-lg">
               <Server className="h-6 w-6 text-primary-600" />
@@ -87,51 +87,51 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Playbooks */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Playbooks</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{playbookCount}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Playbooks</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{playbookCount}</p>
             </div>
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <FileCode className="h-6 w-6 text-blue-600" />
+            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
+              <FileCode className="h-6 w-6 text-blue-600 dark:text-blue-300" />
             </div>
           </div>
-          <Link to="/playbooks" className="text-sm text-primary-600 hover:text-primary-700 mt-4 inline-block">
+          <Link to="/playbooks" className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 mt-4 inline-block">
             View all playbooks →
           </Link>
         </div>
 
         {/* Total jobs */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Jobs</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total || 0}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Jobs</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{stats?.total || 0}</p>
             </div>
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <Clock className="h-6 w-6 text-purple-600" />
+            <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
+              <Clock className="h-6 w-6 text-purple-600 dark:text-purple-300" />
             </div>
           </div>
-          <Link to="/jobs" className="text-sm text-primary-600 hover:text-primary-700 mt-4 inline-block">
-            View all jobs →
-          </Link>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+            {stats?.running || 0} currently running
+          </p>
         </div>
 
         {/* Success rate */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Success Rate</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Success Rate</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
                 {stats?.success_rate.toFixed(1) || 0}%
               </p>
             </div>
-            <div className="p-3 bg-success-100 rounded-lg">
-              <CheckCircle className="h-6 w-6 text-success-600" />
+            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
+              <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-300" />
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
             {stats?.success || 0} successful jobs
           </p>
         </div>
@@ -139,106 +139,106 @@ export const Dashboard: React.FC = () => {
 
       {/* Job status breakdown */}
       {stats && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Status Overview</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Job Status Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center">
               <div className="flex items-center justify-center mb-2">
-                <AlertCircle className="h-5 w-5 text-gray-500 mr-2" />
-                <span className="text-2xl font-bold text-gray-700">{stats.pending}</span>
+                <AlertCircle className="h-5 w-5 text-gray-500 dark:text-gray-400 mr-2" />
+                <span className="text-2xl font-bold text-gray-700 dark:text-gray-300">{stats.pending}</span>
               </div>
-              <p className="text-sm text-gray-600">Pending</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
             </div>
             <div className="text-center">
               <div className="flex items-center justify-center mb-2">
-                <Clock className="h-5 w-5 text-blue-500 mr-2" />
-                <span className="text-2xl font-bold text-blue-700">{stats.running}</span>
+                <Clock className="h-5 w-5 text-blue-500 dark:text-blue-400 mr-2" />
+                <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{stats.running}</span>
               </div>
-              <p className="text-sm text-gray-600">Running</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Running</p>
             </div>
             <div className="text-center">
               <div className="flex items-center justify-center mb-2">
-                <CheckCircle className="h-5 w-5 text-success-500 mr-2" />
-                <span className="text-2xl font-bold text-success-700">{stats.success}</span>
+                <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400 mr-2" />
+                <span className="text-2xl font-bold text-green-700 dark:text-green-300">{stats.success}</span>
               </div>
-              <p className="text-sm text-gray-600">Success</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Success</p>
             </div>
             <div className="text-center">
               <div className="flex items-center justify-center mb-2">
-                <XCircle className="h-5 w-5 text-error-500 mr-2" />
-                <span className="text-2xl font-bold text-error-700">{stats.failed}</span>
+                <XCircle className="h-5 w-5 text-red-500 dark:text-red-400 mr-2" />
+                <span className="text-2xl font-bold text-red-700 dark:text-red-300">{stats.failed}</span>
               </div>
-              <p className="text-sm text-gray-600">Failed</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Failed</p>
             </div>
             <div className="text-center">
               <div className="flex items-center justify-center mb-2">
-                <AlertCircle className="h-5 w-5 text-warning-500 mr-2" />
-                <span className="text-2xl font-bold text-warning-700">{stats.cancelled}</span>
+                <AlertCircle className="h-5 w-5 text-yellow-500 dark:text-yellow-400 mr-2" />
+                <span className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{stats.cancelled}</span>
               </div>
-              <p className="text-sm text-gray-600">Cancelled</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Cancelled</p>
             </div>
           </div>
         </div>
       )}
 
       {/* Recent jobs */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Jobs</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Jobs</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Job ID
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Playbook
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Server
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Created
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {recentJobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
                     No jobs found
                   </td>
                 </tr>
               ) : (
                 recentJobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {job.job_id}
+                  <tr key={job.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      {job.job_id.substring(0, 8)}...
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {job.playbook?.name || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {job.server?.hostname || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <StatusBadge status={job.status} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {new Date(job.created_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <Link
                         to={`/jobs/${job.id}`}
-                        className="text-primary-600 hover:text-primary-900"
+                        className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300"
                       >
                         View details
                       </Link>

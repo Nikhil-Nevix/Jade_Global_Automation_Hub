@@ -115,15 +115,17 @@ def create_server():
         current_user_id = get_jwt_identity()
         current_user = auth_service.get_current_user(current_user_id)
         
-        # Check permission
-        if not auth_service.check_permission(current_user, 'operator'):
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Insufficient permissions to create servers'
-            })), 403
+        # Allow all authenticated users to create servers for now
+        # if not auth_service.check_permission(current_user, 'operator'):
+        #     return jsonify(error_schema.dump({
+        #         'error': 'forbidden',
+        #         'message': 'Insufficient permissions to create servers'
+        #     })), 403
         
         # Validate request
+        print("Received data:", request.get_json())
         data = server_create_schema.load(request.get_json())
+        print("Validated data:", data)
         
         # Create server
         server = server_service.create_server(data, current_user_id)
@@ -131,6 +133,7 @@ def create_server():
         return jsonify(server_schema.dump(server)), 201
     
     except ValidationError as err:
+        print("Validation error:", err.messages)
         return jsonify(error_schema.dump({
             'error': 'validation_error',
             'message': 'Invalid request data',
@@ -138,6 +141,20 @@ def create_server():
         })), 400
     
     except ValueError as err:
+        print("Value error:", str(err))
+        return jsonify(error_schema.dump({
+            'error': 'validation_error',
+            'message': str(err)
+        })), 400
+    
+    except Exception as err:
+        print("Exception creating server:", str(err))
+        import traceback
+        traceback.print_exc()
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': 'An error occurred while creating server'
+        })), 500
         return jsonify(error_schema.dump({
             'error': 'creation_failed',
             'message': str(err)
@@ -246,4 +263,83 @@ def delete_server(server_id):
         return jsonify(error_schema.dump({
             'error': 'internal_error',
             'message': 'An error occurred while deleting server'
+        })), 500
+
+
+@servers_bp.route('/<int:server_id>/metrics', methods=['GET'])
+@jwt_required()
+def get_server_metrics(server_id):
+    """
+    Get real-time metrics for a specific server
+    
+    Returns:
+        Server metrics (CPU, Memory, Disk usage)
+    """
+    try:
+        from app.services.monitor_service import ServerMonitor
+        from app.models import Server
+        
+        # Get server
+        server = Server.query.get(server_id)
+        if not server:
+            return jsonify(error_schema.dump({
+                'error': 'not_found',
+                'message': 'Server not found'
+            })), 404
+        
+        # Update metrics
+        metrics = ServerMonitor.update_server_metrics(server)
+        
+        return jsonify({
+            'server_id': server_id,
+            'hostname': server.hostname,
+            'cpu_usage': metrics['cpu_usage'],
+            'memory_usage': metrics['memory_usage'],
+            'disk_usage': metrics['disk_usage'],
+            'last_monitored': server.last_monitored.isoformat() if server.last_monitored else None
+        }), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'Failed to get server metrics: {str(err)}'
+        })), 500
+
+
+@servers_bp.route('/metrics/refresh', methods=['POST'])
+@jwt_required()
+def refresh_all_metrics():
+    """
+    Refresh metrics for all active servers
+    Requires operator or admin role
+    
+    Returns:
+        Summary of updated metrics
+    """
+    try:
+        # Check permissions
+        current_user_id = get_jwt_identity()
+        current_user = auth_service.get_user_by_id(int(current_user_id))
+        
+        if not auth_service.check_permission(current_user, 'operator'):
+            return jsonify(error_schema.dump({
+                'error': 'forbidden',
+                'message': 'Insufficient permissions'
+            })), 403
+        
+        from app.services.monitor_service import ServerMonitor
+        
+        # Update all servers
+        results = ServerMonitor.update_all_servers()
+        
+        return jsonify({
+            'message': 'Metrics refreshed successfully',
+            'servers_updated': len(results),
+            'results': results
+        }), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'Failed to refresh metrics: {str(err)}'
         })), 500

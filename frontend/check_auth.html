@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><title>Check Auth</title></head>
+<body>
+<h1>Authentication Debug</h1>
+<pre id="output"></pre>
+<script>
+const output = document.getElementById('output');
+const accessToken = localStorage.getItem('access_token');
+const refreshToken = localStorage.getItem('refresh_token');
+output.textContent = `Access Token: ${accessToken ? 'EXISTS (' + accessToken.substring(0, 50) + '...)' : 'MISSING'}
+Refresh Token: ${refreshToken ? 'EXISTS (' + refreshToken.substring(0, 50) + '...)' : 'MISSING'}
+
+All localStorage items:
+${JSON.stringify(localStorage, null, 2)}`;
+</script>
+</body>
+</html>

@@ -129,8 +129,6 @@ def upload_playbook():
         file: File (required, .yml or .yaml)
         name: str (required)
         description: str
-        tags: JSON string
-        variables: JSON string
     
     Returns:
         Created playbook
@@ -140,12 +138,12 @@ def upload_playbook():
         current_user_id = get_jwt_identity()
         current_user = auth_service.get_current_user(current_user_id)
         
-        # Check permission
-        if not auth_service.check_permission(current_user, 'operator'):
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Insufficient permissions to upload playbooks'
-            })), 403
+        # Allow all authenticated users to upload playbooks for now
+        # if not auth_service.check_permission(current_user, 'operator'):
+        #     return jsonify(error_schema.dump({
+        #         'error': 'forbidden',
+        #         'message': 'Insufficient permissions to upload playbooks'
+        #     })), 403
         
         # Check if file is present
         if 'file' not in request.files:
@@ -165,8 +163,6 @@ def upload_playbook():
         # Get form data
         name = request.form.get('name')
         description = request.form.get('description')
-        tags = request.form.get('tags')
-        variables = request.form.get('variables')
         
         if not name:
             return jsonify(error_schema.dump({
@@ -174,18 +170,11 @@ def upload_playbook():
                 'message': 'Playbook name is required'
             })), 400
         
-        # Parse JSON fields
-        import json
-        tags_dict = json.loads(tags) if tags else None
-        variables_dict = json.loads(variables) if variables else None
-        
         # Create playbook
         playbook = playbook_service.create_playbook(
             name=name,
             file_obj=file,
             description=description,
-            tags=tags_dict,
-            variables=variables_dict,
             user_id=current_user_id
         )
         
@@ -290,13 +279,8 @@ def delete_playbook(playbook_id):
                 'message': 'Insufficient permissions to delete playbooks'
             })), 403
         
-        # Check if hard delete
-        hard_delete = request.args.get('hard', 'false').lower() == 'true'
-        
-        if hard_delete:
-            playbook_service.hard_delete_playbook(playbook_id, current_user_id)
-        else:
-            playbook_service.delete_playbook(playbook_id, current_user_id)
+        # Always do hard delete (permanently remove from database)
+        playbook_service.hard_delete_playbook(playbook_id, current_user_id)
         
         return jsonify({'message': 'Playbook deleted successfully'}), 200
     

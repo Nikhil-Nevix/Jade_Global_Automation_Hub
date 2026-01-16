@@ -1,0 +1,22 @@
+[0;1;32m●[0m mariadb.service - MariaDB 10.3 database server
+   Loaded: loaded (/usr/lib/systemd/system/mariadb.service; disabled; vendor preset: disabled)
+   Active: [0;1;32mactive (running)[0m since Thu 2026-01-08 03:38:40 EST; 3 days ago
+     Docs: man:mysqld(8)
+           https://mariadb.com/kb/en/library/systemd/
+ Main PID: 9083 (mysqld)
+   Status: "Taking your SQL requests now..."
+    Tasks: 32 (limit: 48526)
+   Memory: 89.0M
+   CGroup: /system.slice/mariadb.service
+           └─9083 /usr/libexec/mysqld --basedir=/usr
+
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: Please report any problems at http://mariadb.org/jira
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: The latest information about MariaDB is available at http://mariadb.org/.
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: You can find additional information about the MySQL part at:
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: http://dev.mysql.com
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: Consider joining MariaDB's strong and vibrant community:
+Jan 08 03:38:40 jgpnabhi mysql-prepare-db-dir[8957]: https://mariadb.org/get-involved/
+Jan 08 03:38:40 jgpnabhi mysqld[9083]: 2026-01-08  3:38:40 0 [Note] /usr/libexec/mysqld (mysqld 10.3.28-MariaDB) starting as process 9083 ...
+Jan 08 03:38:40 jgpnabhi mysqld[9083]: 2026-01-08  3:38:40 0 [Warning] Could not increase number of max_open_files to more than 1024 (request: 32183)
+Jan 08 03:38:40 jgpnabhi mysqld[9083]: 2026-01-08  3:38:40 0 [Warning] Changed limits: max_open_files: 1024  max_connections: 151 (was 151)  table_cache: 421 (was 2000)
+Jan 08 03:38:40 jgpnabhi systemd[1]: Started MariaDB 10.3 database server.

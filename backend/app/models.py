@@ -67,19 +67,16 @@ class Server(db.Model):
     ssh_port = db.Column(db.Integer, default=22, nullable=False)
     ssh_user = db.Column(db.String(50), nullable=False, default='root')
     ssh_key_path = db.Column(db.String(500), nullable=True)  # Path to private key
-    tags = db.Column(db.JSON, nullable=True)  # Flexible metadata storage
-    environment = db.Column(db.String(50), nullable=True)  # dev, staging, production
-    description = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    cpu_usage = db.Column(db.Float, nullable=True, default=0.0)  # CPU usage percentage (0-100)
+    memory_usage = db.Column(db.Float, nullable=True, default=0.0)  # Memory usage percentage (0-100)
+    disk_usage = db.Column(db.Float, nullable=True, default=0.0)  # Disk usage percentage (0-100)
+    last_monitored = db.Column(db.DateTime, nullable=True)  # Last time metrics were updated
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
     jobs = db.relationship('Job', back_populates='server', lazy='dynamic')
-    
-    __table_args__ = (
-        Index('idx_server_active_env', 'is_active', 'environment'),
-    )
     
     def __repr__(self):
         return f'<Server {self.hostname} ({self.ip_address})>'
@@ -93,9 +90,6 @@ class Playbook(db.Model):
     name = db.Column(db.String(255), unique=True, nullable=False, index=True)
     description = db.Column(db.Text, nullable=True)
     file_path = db.Column(db.String(500), nullable=False)  # Linux filesystem path
-    file_hash = db.Column(db.String(64), nullable=False)  # SHA256 for integrity
-    tags = db.Column(db.JSON, nullable=True)
-    variables = db.Column(db.JSON, nullable=True)  # Default variables
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

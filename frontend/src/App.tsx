@@ -12,7 +12,10 @@ import { LoginPage } from './pages/LoginPage/LoginPage';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ServersPage } from './pages/ServersPage/ServersPage';
 import { PlaybooksPage } from './pages/PlaybooksPage/PlaybooksPage';
+import { JobsPage } from './pages/JobsPage/JobsPage';
 import { JobDetailsPage } from './pages/JobDetailsPage/JobDetailsPage';
+import { UsersPage } from './pages/UsersPage/UsersPage';
+import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -40,25 +43,28 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 // Main layout with sidebar and navbar
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-6 dark:bg-gray-900">{children}</main>
       </div>
     </div>
   );
 };
 
 export const App: React.FC = () => {
-  const { isAuthenticated, loadUser } = useAuthStore();
+  const { isAuthenticated, loadUser, user } = useAuthStore();
 
   useEffect(() => {
-    // Load user data on app start if authenticated
-    if (isAuthenticated) {
-      loadUser();
+    // Load user data on app start if authenticated and user not already loaded
+    if (isAuthenticated && !user) {
+      console.log('[App] Loading user data...');
+      loadUser().catch(err => {
+        console.error('[App] Failed to load user:', err);
+      });
     }
-  }, [isAuthenticated, loadUser]);
+  }, [isAuthenticated, loadUser, user]);
 
   return (
     <BrowserRouter>
@@ -102,7 +108,7 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <Dashboard />
+                <JobsPage />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -113,6 +119,26 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <JobDetailsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <UsersPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SettingsPage />
               </MainLayout>
             </ProtectedRoute>
           }

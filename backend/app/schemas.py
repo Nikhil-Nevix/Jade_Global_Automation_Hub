@@ -54,7 +54,8 @@ class ServerSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Server
         load_instance = True
-        dump_only = ('id', 'created_at', 'updated_at')
+        dump_only = ('id', 'created_at', 'updated_at', 'last_monitored')
+        include_fk = True
 
 
 class ServerCreateSchema(Schema):
@@ -66,9 +67,6 @@ class ServerCreateSchema(Schema):
     ssh_port = fields.Int(validate=validate.Range(min=1, max=65535))
     ssh_user = fields.Str(required=True, validate=validate.Length(max=50))
     ssh_key_path = fields.Str(validate=validate.Length(max=500))
-    tags = fields.Dict()
-    environment = fields.Str(validate=validate.OneOf(['dev', 'staging', 'production']))
-    description = fields.Str()
     is_active = fields.Bool()
 
 
@@ -81,9 +79,6 @@ class ServerUpdateSchema(Schema):
     ssh_port = fields.Int(validate=validate.Range(min=1, max=65535))
     ssh_user = fields.Str(validate=validate.Length(max=50))
     ssh_key_path = fields.Str(validate=validate.Length(max=500))
-    tags = fields.Dict()
-    environment = fields.Str(validate=validate.OneOf(['dev', 'staging', 'production']))
-    description = fields.Str()
     is_active = fields.Bool()
 
 
@@ -101,8 +96,6 @@ class PlaybookCreateSchema(Schema):
     """Schema for playbook metadata during upload"""
     name = fields.Str(required=True, validate=validate.Length(min=1, max=255))
     description = fields.Str()
-    tags = fields.Dict()
-    variables = fields.Dict()
 
 
 class PlaybookUpdateSchema(Schema):

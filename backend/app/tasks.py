@@ -3,6 +3,7 @@ Celery Tasks
 Defines async tasks for job execution
 """
 from celery import Task
+from celery.exceptions import Terminated, SoftTimeLimitExceeded
 from app.extensions import celery, db
 from app.models import Job, Playbook, Server
 from app.services.job_service import job_service
@@ -11,15 +12,7 @@ from app.utils.log_parser import log_parser
 from datetime import datetime
 
 
-class DatabaseTask(Task):
-    """Base task class that handles database session management"""
-    
-    def after_return(self, *args, **kwargs):
-        """Clean up database session after task execution"""
-        db.session.remove()
-
-
-@celery.task(base=DatabaseTask, bind=True, name='app.tasks.execute_playbook_task')
+@celery.task(bind=True, name='app.tasks.execute_playbook_task')
 def execute_playbook_task(self, job_id):
     """
     Execute Ansible playbook asynchronously
@@ -63,10 +56,8 @@ def execute_playbook_task(self, job_id):
             ssh_port=server.ssh_port
         )
         
-        # Merge extra vars
+        # Prepare extra vars from job
         extra_vars = {}
-        if playbook.variables:
-            extra_vars.update(playbook.variables)
         if job.extra_vars:
             extra_vars.update(job.extra_vars)
         
@@ -125,6 +116,32 @@ def execute_playbook_task(self, job_id):
             'total_logs': len(logs_to_insert)
         }
     
+    except Terminated:
+        # Handle task termination (when user clicks stop)
+        error_message = "Task was terminated by user"
+        
+        try:
+            job_service.update_job_status(
+                job_id,
+                'cancelled',
+                error_message=error_message
+            )
+            
+            # Add termination log
+            job_service.add_job_log(
+                job_id,
+                1,
+                f"Job terminated by user request at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
+                log_level='WARNING'
+            )
+        except Exception:
+            pass
+        
+        return {
+            'status': 'cancelled',
+            'message': error_message
+        }
+    
     except Exception as e:
         # Handle any unexpected errors
         error_message = f"Task execution error: {str(e)}"
@@ -150,9 +167,15 @@ def execute_playbook_task(self, job_id):
             'status': 'error',
             'message': error_message
         }
+    finally:
+        # Cleanup database session
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
-@celery.task(base=DatabaseTask, name='app.tasks.cleanup_old_logs')
+@celery.task(name='app.tasks.cleanup_old_logs')
 def cleanup_old_logs():
     """
     Periodic task to clean up old job logs
@@ -188,7 +211,7 @@ def cleanup_old_logs():
         }
 
 
-@celery.task(base=DatabaseTask, name='app.tasks.generate_job_report')
+@celery.task(name='app.tasks.generate_job_report')
 def generate_job_report(start_date=None, end_date=None):
     """
     Generate job execution report for a date range

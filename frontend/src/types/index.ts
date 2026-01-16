@@ -48,6 +48,10 @@ export interface Server {
   environment?: 'dev' | 'staging' | 'production';
   description?: string;
   is_active: boolean;
+  cpu_usage?: number;
+  memory_usage?: number;
+  disk_usage?: number;
+  last_monitored?: string;
   created_at: string;
   updated_at: string;
 }

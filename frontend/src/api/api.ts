@@ -65,7 +65,12 @@ axiosInstance.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) {
-          throw new Error('No refresh token available');
+          console.warn('[API] No refresh token available, redirecting to login');
+          // Silently redirect without throwing error
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+          return Promise.reject(error);
         }
 
         const response = await axios.post<TokenResponse>(
@@ -87,11 +92,12 @@ axiosInstance.interceptors.response.use(
         }
         return axiosInstance(originalRequest);
       } catch (refreshError) {
+        console.error('[API] Token refresh failed:', refreshError);
         // Refresh failed - clear tokens and redirect to login
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         window.location.href = '/login';
-        return Promise.reject(refreshError);
+        return Promise.reject(error);
       }
     }
 
@@ -162,6 +168,23 @@ export const serversApi = {
 
   testConnection: async (id: number): Promise<{ success: boolean; message: string }> => {
     const response = await axiosInstance.post(`/servers/${id}/test`);
+    return response.data;
+  },
+
+  getMetrics: async (id: number): Promise<{
+    server_id: number;
+    hostname: string;
+    cpu_usage: number | null;
+    memory_usage: number | null;
+    disk_usage: number | null;
+    last_monitored: string | null;
+  }> => {
+    const response = await axiosInstance.get(`/servers/${id}/metrics`);
+    return response.data;
+  },
+
+  refreshAllMetrics: async (): Promise<{ message: string; servers_updated: number }> => {
+    const response = await axiosInstance.post('/servers/metrics/refresh');
     return response.data;
   },
 };
@@ -270,9 +293,9 @@ export const ticketsApi = {
 // ===== Users API (Admin only) =====
 
 export const usersApi = {
-  list: async (page = 1, perPage = 20): Promise<PaginatedResponse<User>> => {
+  list: async (params: { page?: number; per_page?: number } = {}): Promise<PaginatedResponse<User>> => {
     const response = await axiosInstance.get<PaginatedResponse<User>>('/users', {
-      params: { page, per_page: perPage },
+      params: { page: params.page || 1, per_page: params.per_page || 20 },
     });
     return response.data;
   },

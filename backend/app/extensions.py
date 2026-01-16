@@ -57,17 +57,18 @@ def init_extensions(app):
     global redis_client
     redis_client = redis.from_url(app.config['CELERY_BROKER_URL'])
     
-    # Celery configuration
+    # Celery configuration (use new-style lowercase keys)
     celery.conf.update(
         broker_url=app.config['CELERY_BROKER_URL'],
         result_backend=app.config['CELERY_RESULT_BACKEND'],
-        task_serializer=app.config['CELERY_TASK_SERIALIZER'],
-        result_serializer=app.config['CELERY_RESULT_SERIALIZER'],
-        accept_content=app.config['CELERY_ACCEPT_CONTENT'],
-        timezone=app.config['CELERY_TIMEZONE'],
-        enable_utc=app.config['CELERY_ENABLE_UTC'],
-        task_track_started=app.config['CELERY_TASK_TRACK_STARTED'],
-        task_time_limit=app.config['CELERY_TASK_TIME_LIMIT'],
+        task_serializer='json',
+        result_serializer='json',
+        accept_content=['json'],
+        timezone='UTC',
+        enable_utc=True,
+        task_track_started=True,
+        task_time_limit=3600,
+        broker_connection_retry_on_startup=True,
     )
     
     # Update celery with Flask app context

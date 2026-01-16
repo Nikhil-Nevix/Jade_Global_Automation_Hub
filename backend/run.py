@@ -13,6 +13,7 @@ from app.extensions import celery
 
 # Create Flask app
 app = create_app()
+print("backend loaded successfully")
 
 # Make celery app available
 celery_app = celery

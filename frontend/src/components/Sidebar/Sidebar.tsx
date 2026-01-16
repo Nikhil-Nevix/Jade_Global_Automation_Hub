@@ -11,6 +11,7 @@ import {
   FileCode,
   Clock,
   Users,
+  Settings as SettingsIcon,
   X,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -49,10 +50,16 @@ const navItems: NavItem[] = [
     roles: ['admin', 'operator', 'viewer'],
   },
   {
-    name: 'Users',
+    name: 'User Management',
     path: '/users',
     icon: Users,
     roles: ['admin'],
+  },
+  {
+    name: 'Settings',
+    path: '/settings',
+    icon: SettingsIcon,
+    roles: ['admin', 'operator', 'viewer'],
   },
 ];
 
@@ -77,14 +84,14 @@ export const Sidebar: React.FC = () => {
       />
 
       {/* Sidebar */}
-      <aside className="fixed lg:static inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 flex flex-col">
+      <aside className="fixed lg:static inset-y-0 left-0 z-30 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
         {/* Logo and close button */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">IA</span>
             </div>
-            <span className="font-semibold text-gray-800">InfraAuto</span>
+            <span className="font-semibold text-gray-800 dark:text-white">InfraAuto</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -106,8 +113,8 @@ export const Sidebar: React.FC = () => {
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                         isActive
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-gray-700 hover:bg-gray-100'
+                          ? 'bg-primary-50 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`
                     }
                   >
@@ -121,9 +128,9 @@ export const Sidebar: React.FC = () => {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200">
-          <p className="text-xs text-gray-500 text-center">
-            v1.0.0 | © 2024 InfraAuto
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            v1.0.0 | © 2026 InfraAuto
           </p>
         </div>
       </aside>

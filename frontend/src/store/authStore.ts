@@ -37,14 +37,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
 
   login: async (credentials: LoginRequest) => {
+    console.log('[AuthStore] Starting login with:', credentials);
     set({ isLoading: true, error: null });
     try {
+      console.log('[AuthStore] Calling API login...');
       const response = await api.login(credentials);
+      console.log('[AuthStore] API response received:', JSON.stringify(response));
+      
+      if (!response) {
+        throw new Error('No response from server');
+      }
+      
       const { access_token, refresh_token, user } = response;
+      console.log('[AuthStore] Extracted tokens:', { 
+        hasAccessToken: !!access_token, 
+        hasRefreshToken: !!refresh_token, 
+        hasUser: !!user 
+      });
+
+      if (!access_token || !refresh_token || !user) {
+        throw new Error('Invalid response structure: missing required fields');
+      }
 
       // Store tokens in localStorage
-      localStorage.setItem('access_token', access_token);
-      localStorage.setItem('refresh_token', refresh_token);
+      try {
+        localStorage.setItem('access_token', access_token);
+        localStorage.setItem('refresh_token', refresh_token);
+        console.log('[AuthStore] Tokens saved to localStorage');
+      } catch (storageError) {
+        console.error('[AuthStore] localStorage error:', storageError);
+        throw new Error('Failed to save authentication tokens');
+      }
 
       set({
         user,
@@ -54,16 +77,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         error: null,
       });
+      console.log('[AuthStore] State updated successfully, isAuthenticated=true');
     } catch (error: any) {
+      console.error('[AuthStore] Login error:', error);
+      console.error('[AuthStore] Error details:', {
+        message: error.message,
+        response: error.response,
+        stack: error.stack
+      });
       const errorMessage =
         error.response?.data?.error ||
         error.response?.data?.message ||
+        error.message ||
         'Login failed. Please check your credentials.';
       set({
         isLoading: false,
         error: errorMessage,
         isAuthenticated: false,
       });
+      console.log('[AuthStore] Error state set:', errorMessage);
       throw error;
     }
   },

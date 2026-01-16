@@ -149,6 +149,7 @@ def register_jwt_handlers(app):
     
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
+        app.logger.error(f"Invalid token error: {error}")
         return jsonify({
             'error': 'invalid_token',
             'message': 'Token verification failed'
@@ -156,6 +157,7 @@ def register_jwt_handlers(app):
     
     @jwt.unauthorized_loader
     def unauthorized_callback(error):
+        app.logger.error(f"Unauthorized error: {error}")
         return jsonify({
             'error': 'unauthorized',
             'message': 'Missing authorization token'
