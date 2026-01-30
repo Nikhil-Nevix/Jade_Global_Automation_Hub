@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Search, Upload, Trash2, Play, RefreshCw, X, UploadCloud, Edit, Save, Grid, List, Copy, Clock, FileText } from 'lucide-react';
+import { Search, Upload, Trash2, Play, RefreshCw, X, UploadCloud, Edit, Save, Grid, List, Copy, Clock, FileText, History } from 'lucide-react';
 import { playbooksApi, serversApi, jobsApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -507,6 +507,14 @@ export const PlaybooksPage: React.FC = () => {
                         {isAdmin && (
                           <>
                             <button
+                              onClick={() => navigate(`/playbooks/${playbook.id}/audit`)}
+                              className="p-2 bg-info-500 hover:bg-info-600 text-white rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
+                              title="View History"
+                            >
+                              <History className="h-4 w-4" />
+                            </button>
+                            
+                            <button
                               onClick={() => handleEdit(playbook)}
                               className="p-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
                               title="Edit"
@@ -631,6 +639,14 @@ export const PlaybooksPage: React.FC = () => {
                           {/* Edit and Delete buttons - only for admin and super_admin */}
                           {isAdmin && (
                             <>
+                              <button
+                                onClick={() => navigate(`/playbooks/${playbook.id}/audit`)}
+                                className="px-3 py-1.5 bg-info-500 hover:bg-info-600 text-white rounded-md inline-flex items-center gap-1 transition-all shadow-glow-sm hover:shadow-glow"
+                                title="View History"
+                              >
+                                <History className="h-4 w-4" />
+                                History
+                              </button>
                               <button
                                 onClick={() => handleEdit(playbook)}
                                 className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md inline-flex items-center gap-1 transition-all shadow-glow-sm hover:shadow-glow"

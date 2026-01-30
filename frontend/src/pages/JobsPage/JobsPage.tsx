@@ -176,10 +176,68 @@ export const JobsPage: React.FC = () => {
             className="w-full pl-12 pr-4 py-3 bg-white text-gray-900 border border-primary-200 shadow-glow rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 placeholder-gray-400"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-3 bg-gray-200 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-300 transition-colors">
-          <Filter className="h-5 w-5" />
-          All Statuses
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSelectedStatus('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'all'
+                ? 'bg-primary-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setSelectedStatus('pending')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'pending'
+                ? 'bg-yellow-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Pending
+          </button>
+          <button
+            onClick={() => setSelectedStatus('running')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'running'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Running
+          </button>
+          <button
+            onClick={() => setSelectedStatus('success')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'success'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Success
+          </button>
+          <button
+            onClick={() => setSelectedStatus('failed')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'failed'
+                ? 'bg-red-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Failed
+          </button>
+          <button
+            onClick={() => setSelectedStatus('cancelled')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedStatus === 'cancelled'
+                ? 'bg-gray-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Cancelled
+          </button>
+        </div>
       </div>
 
       {/* Jobs Table */}
@@ -237,16 +295,20 @@ export const JobsPage: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-sm text-gray-700">
                         <span className="text-gray-600">📋</span>
-                        {Math.floor(Math.random() * 5) + 1} Nodes
+                        {job.server ? '1 Node' : '0 Nodes'}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
-                        <div className="flex items-center gap-1">
-                          <span className="text-gray-600">🕐</span>
-                          {formatTime(job.started_at || job.created_at)}
+                        <div className="flex flex-col">
+                          <span>{new Date(job.started_at || job.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}</span>
+                          <span className="text-xs text-gray-600">{formatTime(job.started_at || job.created_at)}</span>
                         </div>
-                        <div className="text-xs text-primary-600">
+                        <div className="text-xs text-primary-600 mt-1">
                           {getEstimatedFinish(job)}
                         </div>
                       </div>
@@ -257,10 +319,11 @@ export const JobsPage: React.FC = () => {
                         {isAdmin && job.status !== 'cancelled' && (
                           <button
                             onClick={(e) => handleStopJob(job, e)}
-                            className="p-1.5 rounded transition-colors text-red-600 hover:bg-red-50"
+                            className="flex items-center gap-1 text-red-600 hover:text-red-800 text-sm font-medium"
                             title="Delete Job"
                           >
-                            <StopCircle className="h-5 w-5" />
+                            <span>🗑️</span>
+                            Delete
                           </button>
                         )}
                         

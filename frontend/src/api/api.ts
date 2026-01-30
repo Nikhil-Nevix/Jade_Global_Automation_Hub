@@ -246,6 +246,13 @@ export const playbooksApi = {
   delete: async (id: number): Promise<void> => {
     await axiosInstance.delete(`/playbooks/${id}`);
   },
+
+  getAuditLogs: async (id: number, page: number = 1, per_page: number = 50): Promise<{ playbook_id: number; audit_logs: any[] }> => {
+    const response = await axiosInstance.get(`/playbooks/${id}/audit-logs`, {
+      params: { page, per_page }
+    });
+    return response.data;
+  },
 };
 
 // ===== Jobs API =====
@@ -330,6 +337,11 @@ export const usersApi = {
     data: { email?: string; role?: string; is_active?: boolean }
   ): Promise<User> => {
     const response = await axiosInstance.put<User>(`/users/${id}`, data);
+    return response.data;
+  },
+
+  updateTimezone: async (timezone: string): Promise<User> => {
+    const response = await axiosInstance.patch<User>('/users/me/timezone', { timezone });
     return response.data;
   },
 

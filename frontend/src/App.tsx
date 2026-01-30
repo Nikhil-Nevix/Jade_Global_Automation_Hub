@@ -13,6 +13,8 @@ import { LoginPage } from './pages/LoginPage/LoginPage';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ServersPage } from './pages/ServersPage/ServersPage';
 import { PlaybooksPage } from './pages/PlaybooksPage/PlaybooksPage';
+import { PlaybookAuditPage } from './pages/PlaybookAuditPage/PlaybookAuditPage';
+import { PlaybookAuditLogsPage } from './pages/PlaybookAuditLogsPage/PlaybookAuditLogsPage';
 import { JobsPage } from './pages/JobsPage/JobsPage';
 import { JobDetailsPage } from './pages/JobDetailsPage/JobDetailsPage';
 import { UsersPage } from './pages/UsersPage/UsersPage';
@@ -101,6 +103,26 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <PlaybooksPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/playbooks/:id/audit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <PlaybookAuditPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/playbook-audit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <PlaybookAuditLogsPage />
               </MainLayout>
             </ProtectedRoute>
           }

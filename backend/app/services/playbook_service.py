@@ -5,8 +5,9 @@ Handles playbook management, upload, and storage
 import os
 import hashlib
 from werkzeug.utils import secure_filename
+from flask import request
 from app.extensions import db
-from app.models import Playbook, AuditLog
+from app.models import Playbook, AuditLog, PlaybookAuditLog
 from app.config import get_config
 
 
@@ -89,13 +90,32 @@ class PlaybookService:
         db.session.add(playbook)
         db.session.commit()
         
-        # Create audit log
+        # Read file content for audit log
+        new_content = None
+        try:
+            with open(file_path, 'r') as f:
+                new_content = f.read()
+        except:
+            pass
+        
+        # Create audit logs
         if user_id:
             PlaybookService._create_audit_log(
                 user_id=user_id,
                 action='CREATE',
                 resource_id=playbook.id,
                 details={'name': name, 'file_path': file_path}
+            )
+            
+            # Create detailed playbook audit log
+            PlaybookService._create_playbook_audit_log(
+                playbook_id=playbook.id,
+                playbook_name=name,
+                user_id=user_id,
+                action='created',
+                old_content=None,
+                new_content=new_content,
+                changes_description=f'Playbook "{name}" created'
             )
         
         return playbook
@@ -205,15 +225,34 @@ class PlaybookService:
         if not playbook:
             raise ValueError(f"Playbook with ID {playbook_id} not found")
         
+        # Read content before deletion for audit log
+        old_content = None
+        try:
+            with open(playbook.file_path, 'r') as f:
+                old_content = f.read()
+        except:
+            pass
+        
         playbook.is_active = False
         db.session.commit()
         
-        # Create audit log
+        # Create audit logs
         PlaybookService._create_audit_log(
             user_id=user_id,
             action='DELETE',
             resource_id=playbook.id,
             details={'name': playbook.name}
+        )
+        
+        # Create detailed playbook audit log
+        PlaybookService._create_playbook_audit_log(
+            playbook_id=playbook.id,
+            playbook_name=playbook.name,
+            user_id=user_id,
+            action='deleted',
+            old_content=old_content,
+            new_content=None,
+            changes_description=f'Playbook "{playbook.name}" deleted'
         )
     
     @staticmethod
@@ -323,9 +362,13 @@ class PlaybookService:
         
         # Backup original file
         backup_path = f"{playbook.file_path}.backup"
+        old_content = None
         try:
             import shutil
             shutil.copy2(playbook.file_path, backup_path)
+            # Read old content for audit log
+            with open(playbook.file_path, 'r') as f:
+                old_content = f.read()
         except Exception as e:
             raise ValueError(f"Failed to create backup: {str(e)}")
         
@@ -339,13 +382,24 @@ class PlaybookService:
             playbook.updated_at = db.func.now()
             db.session.commit()
             
-            # Create audit log
+            # Create audit logs
             if user_id:
                 PlaybookService._create_audit_log(
                     user_id=user_id,
-                    action='update_content',
+                    action='UPDATE_CONTENT',
                     resource_id=playbook_id,
                     details=f"Updated content for playbook '{playbook.name}'"
+                )
+                
+                # Create detailed playbook audit log
+                PlaybookService._create_playbook_audit_log(
+                    playbook_id=playbook.id,
+                    playbook_name=playbook.name,
+                    user_id=user_id,
+                    action='updated',
+                    old_content=old_content,
+                    new_content=content,
+                    changes_description=f'Playbook "{playbook.name}" content updated'
                 )
             
             # Remove backup after successful update
@@ -444,6 +498,85 @@ class PlaybookService:
         )
         db.session.add(audit_log)
         db.session.commit()
+    
+    @staticmethod
+    def _create_playbook_audit_log(playbook_id, playbook_name, user_id, action, old_content=None, new_content=None, changes_description=None):
+        """
+        Create detailed playbook audit log entry with content tracking
+        
+        Args:
+            playbook_id: Playbook ID
+            playbook_name: Playbook name
+            user_id: User ID performing action
+            action: Action type (created, updated, deleted, uploaded, replaced)
+            old_content: Previous content (for updates/deletes)
+            new_content: New content (for creates/updates)
+            changes_description: Description of changes
+        """
+        # Get client IP address
+        ip_address = None
+        try:
+            if request:
+                ip_address = request.remote_addr
+        except:
+            pass
+        
+        audit_log = PlaybookAuditLog(
+            playbook_id=playbook_id,
+            playbook_name=playbook_name,
+            user_id=user_id,
+            action=action,
+            old_content=old_content,
+            new_content=new_content,
+            changes_description=changes_description,
+            ip_address=ip_address
+        )
+        db.session.add(audit_log)
+        db.session.commit()
+    
+    @staticmethod
+    def get_playbook_audit_logs(playbook_id, page=1, per_page=50):
+        """
+        Get audit log history for a specific playbook
+        
+        Args:
+            playbook_id: Playbook ID
+            page: Page number
+            per_page: Items per page
+        
+        Returns:
+            List of audit log entries with user information
+        """
+        from app.models import User
+        
+        # Query audit logs with user information
+        audit_logs = PlaybookAuditLog.query\
+            .filter_by(playbook_id=playbook_id)\
+            .order_by(PlaybookAuditLog.created_at.desc())\
+            .paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Format response
+        result = []
+        for log in audit_logs.items:
+            user = User.query.get(log.user_id)
+            result.append({
+                'id': log.id,
+                'playbook_id': log.playbook_id,
+                'playbook_name': log.playbook_name,
+                'action': log.action,
+                'old_content': log.old_content,
+                'new_content': log.new_content,
+                'changes_description': log.changes_description,
+                'ip_address': log.ip_address,
+                'created_at': log.created_at.isoformat() if log.created_at else None,
+                'user': {
+                    'id': user.id if user else None,
+                    'username': user.username if user else 'Unknown',
+                    'email': user.email if user else None
+                }
+            })
+        
+        return result
 
 
 # Singleton instance

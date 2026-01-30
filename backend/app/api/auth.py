@@ -38,14 +38,12 @@ def login():
         
         # Get client info
         ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent')
         
         # Authenticate
         result = auth_service.authenticate(
             username=data['username'],
             password=data['password'],
-            ip_address=ip_address,
-            user_agent=user_agent
+            ip_address=ip_address
         )
         
         return jsonify(token_response_schema.dump(result)), 200

@@ -60,7 +60,7 @@ class AuthService:
         return user
     
     @staticmethod
-    def authenticate(username, password, ip_address=None, user_agent=None):
+    def authenticate(username, password, ip_address=None):
         """
         Authenticate user and generate tokens
         
@@ -68,7 +68,6 @@ class AuthService:
             username: Username
             password: Plain text password
             ip_address: Client IP address
-            user_agent: Client user agent
         
         Returns:
             Dictionary with access_token, refresh_token, and user
@@ -86,8 +85,7 @@ class AuthService:
                 action='LOGIN_FAILED',
                 resource_type='user',
                 details={'username': username, 'reason': 'invalid_credentials'},
-                ip_address=ip_address,
-                user_agent=user_agent
+                ip_address=ip_address
             )
             raise ValueError("Invalid username or password")
         
@@ -122,8 +120,7 @@ class AuthService:
             resource_type='user',
             resource_id=user.id,
             details={'username': username},
-            ip_address=ip_address,
-            user_agent=user_agent
+            ip_address=ip_address
         )
         
         return {
@@ -223,7 +220,7 @@ class AuthService:
     
     @staticmethod
     def _create_audit_log(user_id, action, resource_type, resource_id=None, 
-                         details=None, ip_address=None, user_agent=None):
+                         details=None, ip_address=None):
         """
         Create audit log entry
         
@@ -234,7 +231,6 @@ class AuthService:
             resource_id: ID of resource
             details: Additional details
             ip_address: Client IP
-            user_agent: Client user agent
         """
         audit_log = AuditLog(
             user_id=user_id,
@@ -242,8 +238,7 @@ class AuthService:
             resource_type=resource_type,
             resource_id=resource_id,
             details=details,
-            ip_address=ip_address,
-            user_agent=user_agent
+            ip_address=ip_address
         )
         db.session.add(audit_log)
         db.session.commit()

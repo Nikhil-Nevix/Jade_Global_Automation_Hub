@@ -24,7 +24,6 @@ backend/
 │   ├── schemas.py            # Marshmallow schemas
 │   ├── tasks.py              # Celery tasks
 │   ├── utils/                # Utilities
-│   │   ├── crypto.py         # Encryption/decryption
 │   │   └── log_parser.py     # Ansible log parser
 │   ├── services/             # Business logic layer
 │   │   ├── auth_service.py

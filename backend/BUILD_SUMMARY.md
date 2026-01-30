@@ -25,7 +25,6 @@ backend/
 │   │
 │   ├── utils/
 │   │   ├── __init__.py
-│   │   ├── crypto.py                  # Encryption/decryption service
 │   │   └── log_parser.py              # Ansible log parser
 │   │
 │   ├── services/

@@ -204,6 +204,53 @@ def update_user(user_id):
         })), 500
 
 
+@users_bp.route('/me/timezone', methods=['PATCH'])
+@jwt_required()
+def update_timezone():
+    """
+    Update current user's timezone preference
+    
+    Request Body:
+        timezone: str (e.g., 'UTC', 'America/New_York', 'Asia/Kolkata')
+    
+    Returns:
+        Updated user data
+    """
+    try:
+        # Get current user
+        current_user_id = get_jwt_identity()
+        current_user = auth_service.get_current_user(current_user_id)
+        
+        # Get timezone from request
+        data = request.get_json()
+        timezone = data.get('timezone')
+        
+        if not timezone:
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'Timezone is required'
+            })), 400
+        
+        # Validate timezone format (basic check)
+        if len(timezone) > 50:
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'Timezone string is too long'
+            })), 400
+        
+        # Update timezone
+        current_user.timezone = timezone
+        db.session.commit()
+        
+        return jsonify(user_schema.dump(current_user)), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': 'An error occurred while updating timezone'
+        })), 500
+
+
 @users_bp.route('/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 def delete_user(user_id):

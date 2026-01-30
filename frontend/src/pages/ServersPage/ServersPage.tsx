@@ -17,6 +17,13 @@ export const ServersPage: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshingMetrics, setRefreshingMetrics] = useState(false);
+  const [loadingServerMetrics, setLoadingServerMetrics] = useState(false);
+  const [serverMetrics, setServerMetrics] = useState<{
+    cpu_usage: number | null;
+    memory_usage: number | null;
+    disk_usage: number | null;
+    last_monitored: string | null;
+  } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOS, setFilterOS] = useState<string>('all');
   const [filterEnvironment, setFilterEnvironment] = useState<string>('all');
@@ -39,6 +46,42 @@ export const ServersPage: React.FC = () => {
   useEffect(() => {
     loadServers();
   }, []);
+
+  // Fetch server metrics when details modal opens and refresh every 5 seconds
+  useEffect(() => {
+    if (showDetailsModal && selectedServer) {
+      // Initial fetch
+      fetchServerMetrics(selectedServer.id);
+      
+      // Set up interval for auto-refresh
+      const intervalId = setInterval(() => {
+        fetchServerMetrics(selectedServer.id);
+      }, 5000); // 5 seconds
+      
+      // Cleanup interval when modal closes
+      return () => clearInterval(intervalId);
+    }
+  }, [showDetailsModal, selectedServer]);
+
+  const fetchServerMetrics = async (serverId: number) => {
+    try {
+      setLoadingServerMetrics(true);
+      const metrics = await serversApi.getMetrics(serverId);
+      setServerMetrics(metrics);
+    } catch (error) {
+      console.error('Failed to fetch server metrics:', error);
+      // Keep last known values on error
+    } finally {
+      setLoadingServerMetrics(false);
+    }
+  };
+
+  const handleManualRefreshMetrics = async () => {
+    if (selectedServer) {
+      await fetchServerMetrics(selectedServer.id);
+      addNotification('success', 'Server metrics refreshed');
+    }
+  };
 
   const loadServers = async () => {
     try {
@@ -257,17 +300,6 @@ export const ServersPage: React.FC = () => {
           <option value="online">Online</option>
           <option value="offline">Offline</option>
         </select>
-        {canEdit && (
-          <button
-            onClick={handleRefreshMetrics}
-            disabled={refreshingMetrics}
-            className="flex items-center gap-2 px-4 py-3 bg-success-500 hover:bg-success-600 text-white rounded-lg transition-colors shadow-glow-sm hover:shadow-glow whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Refresh server metrics (CPU, Memory, Disk)"
-          >
-            <RefreshCw className={`h-5 w-5 ${refreshingMetrics ? 'animate-spin' : ''}`} />
-            {refreshingMetrics ? 'Refreshing...' : 'Refresh Metrics'}
-          </button>
-        )}
         <button
           onClick={handleCreate}
           className="flex items-center gap-2 px-4 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors shadow-glow-sm hover:shadow-glow whitespace-nowrap"
@@ -302,10 +334,7 @@ export const ServersPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                   OS / Distro
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Resources
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -340,26 +369,6 @@ export const ServersPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 min-w-[100px]">
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-gray-600 font-medium">CPU</span>
-                          <span className="text-gray-900 font-semibold">
-                            {server.cpu_usage !== undefined && server.cpu_usage !== null 
-                              ? `${server.cpu_usage.toFixed(1)}%` 
-                              : 'N/A'}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full ${getCPUColor(server.cpu_usage || 0)}`}
-                            style={{ width: `${Math.min(server.cpu_usage || 0, 100)}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-2">
                       {/* Details button - visible for all users */}
                       <button
@@ -597,7 +606,7 @@ export const ServersPage: React.FC = () => {
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Status</p>
                     <div className="flex items-center gap-2">
-                      {selectedServer.status === 'active' ? (
+                      {selectedServer.is_active ? (
                         <>
                           <CheckCircle className="h-4 w-4 text-success-500" />
                           <span className="font-semibold text-success-600">Active</span>
@@ -636,26 +645,41 @@ export const ServersPage: React.FC = () => {
 
               {/* Resource Usage */}
               <div>
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Resource Usage</h4>
-                <div className="space-y-4 bg-gray-50 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Resource Usage</h4>
+                  <div className="flex items-center gap-2">
+                    {loadingServerMetrics && (
+                      <span className="text-xs text-gray-500">Updating...</span>
+                    )}
+                    <button
+                      onClick={handleManualRefreshMetrics}
+                      disabled={loadingServerMetrics}
+                      className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
+                      title="Refresh metrics"
+                    >
+                      <RefreshCw className={`h-4 w-4 text-gray-600 dark:text-gray-400 ${loadingServerMetrics ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-4 bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
                   {/* CPU Usage */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <p className="text-sm font-medium text-gray-700">CPU Usage</p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {selectedServer.cpu_usage !== null && selectedServer.cpu_usage !== undefined 
-                          ? `${selectedServer.cpu_usage.toFixed(1)}%`
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">CPU Usage</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {serverMetrics?.cpu_usage !== null && serverMetrics?.cpu_usage !== undefined 
+                          ? `${serverMetrics.cpu_usage.toFixed(1)}%`
                           : 'N/A'}
                       </p>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                       <div 
                         className={`h-3 rounded-full transition-all ${
-                          (selectedServer.cpu_usage || 0) > 80 ? 'bg-error-500' :
-                          (selectedServer.cpu_usage || 0) > 60 ? 'bg-warning-500' :
+                          (serverMetrics?.cpu_usage || 0) > 80 ? 'bg-error-500' :
+                          (serverMetrics?.cpu_usage || 0) > 60 ? 'bg-warning-500' :
                           'bg-success-500'
                         }`}
-                        style={{ width: `${Math.min(selectedServer.cpu_usage || 0, 100)}%` }}
+                        style={{ width: `${Math.min(serverMetrics?.cpu_usage || 0, 100)}%` }}
                       ></div>
                     </div>
                   </div>
@@ -663,21 +687,21 @@ export const ServersPage: React.FC = () => {
                   {/* Memory Usage */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <p className="text-sm font-medium text-gray-700">Memory Usage</p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {selectedServer.memory_usage !== null && selectedServer.memory_usage !== undefined 
-                          ? `${selectedServer.memory_usage.toFixed(1)}%`
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Memory Usage</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {serverMetrics?.memory_usage !== null && serverMetrics?.memory_usage !== undefined 
+                          ? `${serverMetrics.memory_usage.toFixed(1)}%`
                           : 'N/A'}
                       </p>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                       <div 
                         className={`h-3 rounded-full transition-all ${
-                          (selectedServer.memory_usage || 0) > 80 ? 'bg-error-500' :
-                          (selectedServer.memory_usage || 0) > 60 ? 'bg-warning-500' :
+                          (serverMetrics?.memory_usage || 0) > 80 ? 'bg-error-500' :
+                          (serverMetrics?.memory_usage || 0) > 60 ? 'bg-warning-500' :
                           'bg-success-500'
                         }`}
-                        style={{ width: `${Math.min(selectedServer.memory_usage || 0, 100)}%` }}
+                        style={{ width: `${Math.min(serverMetrics?.memory_usage || 0, 100)}%` }}
                       ></div>
                     </div>
                   </div>
@@ -685,24 +709,33 @@ export const ServersPage: React.FC = () => {
                   {/* Disk Usage */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <p className="text-sm font-medium text-gray-700">Disk Usage</p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {selectedServer.disk_usage !== null && selectedServer.disk_usage !== undefined 
-                          ? `${selectedServer.disk_usage.toFixed(1)}%`
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Disk Usage</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {serverMetrics?.disk_usage !== null && serverMetrics?.disk_usage !== undefined 
+                          ? `${serverMetrics.disk_usage.toFixed(1)}%`
                           : 'N/A'}
                       </p>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                       <div 
                         className={`h-3 rounded-full transition-all ${
-                          (selectedServer.disk_usage || 0) > 80 ? 'bg-error-500' :
-                          (selectedServer.disk_usage || 0) > 60 ? 'bg-warning-500' :
+                          (serverMetrics?.disk_usage || 0) > 80 ? 'bg-error-500' :
+                          (serverMetrics?.disk_usage || 0) > 60 ? 'bg-warning-500' :
                           'bg-success-500'
                         }`}
-                        style={{ width: `${Math.min(selectedServer.disk_usage || 0, 100)}%` }}
+                        style={{ width: `${Math.min(serverMetrics?.disk_usage || 0, 100)}%` }}
                       ></div>
                     </div>
                   </div>
+                  
+                  {/* Last Monitored */}
+                  {serverMetrics?.last_monitored && (
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Last updated: {new Date(serverMetrics.last_monitored).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

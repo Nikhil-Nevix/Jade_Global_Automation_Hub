@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { Globe, Shield, Bell, Save } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, Shield, Bell, Save, Clock } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
+import { useAuthStore } from '../../store/authStore';
+import { usersApi } from '../../api/api';
+import { COMMON_TIMEZONES, getUserTimezone, setUserTimezone } from '../../utils/timezone';
 
 type SettingsTab = 'general' | 'security' | 'notifications';
 
@@ -14,6 +17,9 @@ interface NotificationPreferences {
 export const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { autoRefresh, setAutoRefresh, theme, setTheme } = useThemeStore();
+  const { user, setUser } = useAuthStore();
+  const [selectedTimezone, setSelectedTimezone] = useState<string>(getUserTimezone());
+  const [isSavingTimezone, setIsSavingTimezone] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,9 +30,33 @@ export const SettingsPage: React.FC = () => {
     successfulDeployments: true,
   });
 
-  const handleSaveGeneral = () => {
-    // Preferences are saved automatically via store
-    alert('General preferences saved!');
+  // Initialize timezone from user profile
+  useEffect(() => {
+    if (user?.timezone) {
+      setSelectedTimezone(user.timezone);
+      setUserTimezone(user.timezone);
+    }
+  }, [user]);
+
+  const handleSaveGeneral = async () => {
+    // Save timezone if changed
+    if (selectedTimezone !== user?.timezone) {
+      setIsSavingTimezone(true);
+      try {
+        const updatedUser = await usersApi.updateTimezone(selectedTimezone);
+        setUser(updatedUser);
+        setUserTimezone(selectedTimezone);
+        alert('Timezone preference saved successfully!');
+      } catch (error) {
+        console.error('Error saving timezone:', error);
+        alert('Failed to save timezone preference. Please try again.');
+      } finally {
+        setIsSavingTimezone(false);
+      }
+    } else {
+      // Preferences are saved automatically via store
+      alert('General preferences saved!');
+    }
   };
 
   const handleChangePassword = () => {
@@ -134,14 +164,37 @@ export const SettingsPage: React.FC = () => {
                 </label>
               </div>
 
+              {/* Timezone Preference */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  <Clock className="w-4 h-4" />
+                  Timezone
+                </label>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  Choose your preferred timezone for displaying dates and times.
+                </p>
+                <select
+                  value={selectedTimezone}
+                  onChange={(e) => setSelectedTimezone(e.target.value)}
+                  className="w-full max-w-md px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-600 focus:border-primary-500 focus:shadow-glow transition-all"
+                >
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Save Button */}
               <div className="pt-4">
                 <button
                   onClick={handleSaveGeneral}
-                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg flex items-center gap-2"
+                  disabled={isSavingTimezone}
+                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2"
                 >
                   <Save className="w-4 h-4" />
-                  Save Preferences
+                  {isSavingTimezone ? 'Saving...' : 'Save Preferences'}
                 </button>
               </div>
             </div>

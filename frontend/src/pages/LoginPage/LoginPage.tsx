@@ -163,7 +163,7 @@ export const LoginPage: React.FC = () => {
         {/* Jade Logo and title */}
         <div className="text-center mb-8">
           <img src={jadeLogo} alt="Jade Logo" className="w-64 h-32 mx-auto mb-6" />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Infra Ansible Automation</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Jade Global Automation Hub</h1>
           <p className="text-gray-600">Streamline your infrastructure management</p>
         </div>
 

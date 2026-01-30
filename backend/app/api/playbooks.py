@@ -379,3 +379,44 @@ def verify_playbook_integrity(playbook_id):
             'error': 'internal_error',
             'message': 'An error occurred while verifying playbook'
         })), 500
+
+
+@playbooks_bp.route('/<int:playbook_id>/audit-logs', methods=['GET'])
+@jwt_required()
+def get_playbook_audit_logs(playbook_id):
+    """
+    Get audit log history for a specific playbook
+    
+    Query Parameters:
+        page: int
+        per_page: int
+    
+    Returns:
+        List of audit log entries with user information
+    """
+    try:
+        # Check permissions - only admins can view audit logs
+        current_user_id = get_jwt_identity()
+        user = auth_service.get_current_user(current_user_id)
+        if user.role not in ['admin', 'super_admin']:
+            return jsonify(error_schema.dump({
+                'error': 'forbidden',
+                'message': 'Only administrators can view audit logs'
+            })), 403
+        
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        
+        # Get audit logs
+        audit_logs = playbook_service.get_playbook_audit_logs(playbook_id, page, per_page)
+        
+        return jsonify({
+            'playbook_id': playbook_id,
+            'audit_logs': audit_logs
+        }), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': 'An error occurred while fetching audit logs'
+        })), 500

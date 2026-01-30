@@ -14,10 +14,13 @@ import { DynamicChart, ChartType, DataMetric } from '../../components/DynamicCha
 
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
+export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all';
+
 interface ChartConfig {
   id: string;
   metric: DataMetric;
   chartType: ChartType;
+  timeRange: TimeRange;
 }
 
 export const Dashboard: React.FC = () => {
@@ -27,12 +30,14 @@ export const Dashboard: React.FC = () => {
   const [playbookCount, setPlaybookCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [servers, setServers] = useState<ServerType[]>([]);
+  const [allJobs, setAllJobs] = useState<Job[]>([]);
   
   // Chart management state
   const [charts, setCharts] = useState<ChartConfig[]>([
-    { id: '1', metric: 'job-status', chartType: 'bar' },
-    { id: '2', metric: 'job-success-rate', chartType: 'pie' },
+    { id: '1', metric: 'job-status', chartType: 'bar', timeRange: 'all' },
+    { id: '2', metric: 'job-success-rate', chartType: 'pie', timeRange: 'all' },
   ]);
+  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>('all');
 
   useEffect(() => {
     loadDashboardData();
@@ -48,12 +53,13 @@ export const Dashboard: React.FC = () => {
         playbooks: playbooksApi,
       };
       
-      const [jobStats, jobsResponse, serversResponse, playbooksResponse, allServers] = await Promise.all([
+      const [jobStats, jobsResponse, serversResponse, playbooksResponse, allServers, allJobsResponse] = await Promise.all([
         api.jobs.getStatistics(),
         api.jobs.list({ page: 1, per_page: 10 }), // Changed from 5 to 10
         api.servers.list({ page: 1, per_page: 1 }),
         api.playbooks.list({ page: 1, per_page: 1 }),
         api.servers.list({ page: 1, per_page: 100 }), // Fetch more servers for chart data
+        api.jobs.list({ page: 1, per_page: 1000 }), // Fetch all jobs for filtering
       ]);
 
       setStats(jobStats);
@@ -61,6 +67,7 @@ export const Dashboard: React.FC = () => {
       setServerCount(serversResponse.pagination?.total || 0);
       setPlaybookCount(playbooksResponse.pagination?.total || 0);
       setServers(allServers.items || []);
+      setAllJobs(allJobsResponse.items || []);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -68,24 +75,73 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Prepare chart data based on current state
-  const prepareChartData = () => {
+  // Helper function to filter jobs by time range
+  const filterJobsByTimeRange = (jobs: Job[], timeRange: TimeRange): Job[] => {
+    if (timeRange === 'all') return jobs;
+
+    const now = new Date();
+    const cutoffDate = new Date();
+
+    switch (timeRange) {
+      case '7days':
+        cutoffDate.setDate(now.getDate() - 7);
+        break;
+      case '30days':
+        cutoffDate.setDate(now.getDate() - 30);
+        break;
+      case '3months':
+        cutoffDate.setMonth(now.getMonth() - 3);
+        break;
+      case '6months':
+        cutoffDate.setMonth(now.getMonth() - 6);
+        break;
+      case '1year':
+        cutoffDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+
+    return jobs.filter((job) => {
+      // Filter by completion date (ended_at) or creation date if not completed
+      const jobDate = job.ended_at ? new Date(job.ended_at) : new Date(job.created_at);
+      return jobDate >= cutoffDate;
+    });
+  };
+
+  // Calculate filtered statistics for a specific time range
+  const calculateFilteredStats = (jobs: Job[]) => {
+    const pending = jobs.filter(j => j.status === 'pending').length;
+    const running = jobs.filter(j => j.status === 'running').length;
+    const success = jobs.filter(j => j.status === 'success').length;
+    const failed = jobs.filter(j => j.status === 'failed').length;
+    const cancelled = jobs.filter(j => j.status === 'cancelled').length;
+
+    return { pending, running, success, failed, cancelled };
+  };
+
+  // Prepare chart data based on current state and time range
+  const prepareChartData = (timeRange: TimeRange = 'all') => {
     if (!stats) return {};
+
+    // Filter jobs based on time range
+    const filteredJobs = filterJobsByTimeRange(allJobs, timeRange);
+    const filteredStats = calculateFilteredStats(filteredJobs);
 
     // Job Status Data
     const jobStatusData = [
-      { name: 'Pending', value: stats.pending || 0 },
-      { name: 'Running', value: stats.running || 0 },
-      { name: 'Success', value: stats.success || 0 },
-      { name: 'Failed', value: stats.failed || 0 },
-      { name: 'Cancelled', value: stats.cancelled || 0 },
+      { name: 'Pending', value: filteredStats.pending || 0 },
+      { name: 'Running', value: filteredStats.running || 0 },
+      { name: 'Success', value: filteredStats.success || 0 },
+      { name: 'Failed', value: filteredStats.failed || 0 },
+      { name: 'Cancelled', value: filteredStats.cancelled || 0 },
     ];
 
-    // Job Success Rate
-    const totalJobs = (stats.success || 0) + (stats.failed || 0);
+    // Job Success Rate - now showing all statuses
     const jobSuccessRateData = [
-      { name: 'Success', value: stats.success || 0 },
-      { name: 'Failed', value: stats.failed || 0 },
+      { name: 'Pending', value: filteredStats.pending || 0 },
+      { name: 'Running', value: filteredStats.running || 0 },
+      { name: 'Success', value: filteredStats.success || 0 },
+      { name: 'Failed', value: filteredStats.failed || 0 },
+      { name: 'Cancelled', value: filteredStats.cancelled || 0 },
     ];
 
     // Server OS Distribution
@@ -133,6 +189,7 @@ export const Dashboard: React.FC = () => {
       id: Date.now().toString(),
       metric: 'job-status',
       chartType: 'bar',
+      timeRange: 'all',
     };
     setCharts([...charts, newChart]);
   };
@@ -147,6 +204,14 @@ export const Dashboard: React.FC = () => {
 
   const handleChartTypeChange = (id: string, chartType: ChartType) => {
     setCharts(charts.map((chart) => (chart.id === id ? { ...chart, chartType } : chart)));
+  };
+
+  const handleTimeRangeChange = (id: string, timeRange: TimeRange) => {
+    setCharts(charts.map((chart) => (chart.id === id ? { ...chart, timeRange } : chart)));
+  };
+
+  const handleApplyToAllCharts = () => {
+    setCharts(charts.map((chart) => ({ ...chart, timeRange: globalTimeRange })));
   };
 
   const chartData = prepareChartData();
@@ -282,16 +347,42 @@ export const Dashboard: React.FC = () => {
 
       {/* Analytics Charts Section */}
       <div className="space-y-6">
-        {/* Section Header with Add Chart Button */}
+        {/* Section Header with Time Range Filter and Add Chart Button */}
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Analytics & Insights</h2>
-          <button
-            onClick={handleAddChart}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors shadow-sm"
-          >
-            <Plus className="h-4 w-4" />
-            Add Chart
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Global Time Range Filter */}
+            <select
+              value={globalTimeRange}
+              onChange={(e) => setGlobalTimeRange(e.target.value as TimeRange)}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+            >
+              <option value="7days">Last 7 days</option>
+              <option value="30days">Last 30 days</option>
+              <option value="3months">Last 3 months</option>
+              <option value="6months">Last 6 months</option>
+              <option value="1year">Last year</option>
+              <option value="all">All time</option>
+            </select>
+            
+            {/* Apply to All Charts Button */}
+            <button
+              onClick={handleApplyToAllCharts}
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium"
+              title="Apply selected time range to all charts"
+            >
+              Apply to All
+            </button>
+            
+            {/* Add Chart Button */}
+            <button
+              onClick={handleAddChart}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              Add Chart
+            </button>
+          </div>
         </div>
 
         {/* Charts Grid */}
@@ -302,10 +393,12 @@ export const Dashboard: React.FC = () => {
               chartId={chart.id}
               initialMetric={chart.metric}
               initialChartType={chart.chartType}
-              data={chartData}
+              initialTimeRange={chart.timeRange}
+              data={prepareChartData(chart.timeRange)}
               onRemove={handleRemoveChart}
               onMetricChange={handleMetricChange}
               onChartTypeChange={handleChartTypeChange}
+              onTimeRangeChange={handleTimeRangeChange}
             />
           ))}
         </div>

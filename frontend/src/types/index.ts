@@ -13,6 +13,7 @@ export interface User {
   email: string;
   role: UserRole;
   is_active: boolean;
+  timezone: string;
   created_at: string;
   updated_at: string;
   last_login: string | null;
@@ -104,6 +105,30 @@ export interface PlaybookUploadRequest {
   description?: string;
   tags?: Record<string, any>;
   variables?: Record<string, any>;
+}
+
+export type PlaybookAction = 'created' | 'updated' | 'deleted' | 'uploaded' | 'replaced';
+
+export interface PlaybookAuditLog {
+  id: number;
+  playbook_id: number;
+  playbook_name: string;
+  action: PlaybookAction;
+  old_content?: string;
+  new_content?: string;
+  changes_description?: string;
+  ip_address?: string;
+  created_at: string;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+  };
+}
+
+export interface PlaybookAuditLogsResponse {
+  playbook_id: number;
+  audit_logs: PlaybookAuditLog[];
 }
 
 // ===== Job Types =====

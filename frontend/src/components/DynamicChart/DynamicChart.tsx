@@ -30,30 +30,33 @@ export type DataMetric =
   | 'server-os-distribution'
   | 'server-status'
   | 'server-environment';
+export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all';
 
 interface DynamicChartProps {
   chartId: string;
   initialMetric: DataMetric;
   initialChartType: ChartType;
+  initialTimeRange: TimeRange;
   data: any;
   onRemove: (id: string) => void;
   onMetricChange: (id: string, metric: DataMetric) => void;
   onChartTypeChange: (id: string, type: ChartType) => void;
+  onTimeRangeChange: (id: string, timeRange: TimeRange) => void;
 }
 
-// Vibrant 3D color palette
-const PIE_COLORS = [
-  '#FF6B6B', // Vibrant Red
-  '#4ECDC4', // Turquoise
-  '#45B7D1', // Sky Blue
-  '#FFA07A', // Light Salmon
-  '#98D8C8', // Mint
-  '#F7DC6F', // Yellow
-  '#BB8FCE', // Purple
-  '#85C1E2', // Light Blue
-  '#F8B500', // Orange
-  '#6C5CE7', // Indigo
-];
+// Status-specific color mapping to match Job Status Overview (lighter shades)
+const STATUS_COLORS: Record<string, string> = {
+  'Pending': '#9CA3AF',   // Light Gray
+  'Running': '#60A5FA',   // Light Blue/Info
+  'Success': '#34D399',   // Light Green
+  'Failed': '#F87171',    // Light Red/Error
+  'Cancelled': '#FBBF24', // Light Orange/Warning
+};
+
+// Helper function to get color by name
+const getColorByName = (name: string): string => {
+  return STATUS_COLORS[name] || '#8B5CF6'; // Default to primary color
+};
 
 const METRIC_LABELS: Record<DataMetric, string> = {
   'job-status': 'Jobs by Status',
@@ -63,17 +66,29 @@ const METRIC_LABELS: Record<DataMetric, string> = {
   'server-environment': 'Servers by Environment',
 };
 
+const TIME_RANGE_LABELS: Record<TimeRange, string> = {
+  '7days': 'Last 7 days',
+  '30days': 'Last 30 days',
+  '3months': 'Last 3 months',
+  '6months': 'Last 6 months',
+  '1year': 'Last year',
+  'all': 'All time',
+};
+
 export const DynamicChart: React.FC<DynamicChartProps> = ({
   chartId,
   initialMetric,
   initialChartType,
+  initialTimeRange,
   data,
   onRemove,
   onMetricChange,
   onChartTypeChange,
+  onTimeRangeChange,
 }) => {
   const [metric, setMetric] = React.useState<DataMetric>(initialMetric);
   const [chartType, setChartType] = React.useState<ChartType>(initialChartType);
+  const [timeRange, setTimeRange] = React.useState<TimeRange>(initialTimeRange);
 
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newMetric = e.target.value as DataMetric;
@@ -85,6 +100,12 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
     const newType = e.target.value as ChartType;
     setChartType(newType);
     onChartTypeChange(chartId, newType);
+  };
+
+  const handleTimeRangeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRange = e.target.value as TimeRange;
+    setTimeRange(newRange);
+    onTimeRangeChange(chartId, newRange);
   };
 
   const renderChart = () => {
@@ -112,15 +133,14 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }} 
               />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} />
               <Bar 
                 dataKey="value" 
                 fill="url(#colorBar)" 
                 radius={[8, 8, 0, 0]}
                 animationDuration={800}
               >
-                {chartData.map((_: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                {chartData.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={getColorByName(entry.name)} />
                 ))}
               </Bar>
             </BarChart>
@@ -132,10 +152,10 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <defs>
-                {PIE_COLORS.map((color, index) => (
+                {chartData.map((entry: any, index: number) => (
                   <radialGradient key={`gradient-${index}`} id={`pieGradient${index}`}>
-                    <stop offset="0%" stopColor={color} stopOpacity={1} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0.7} />
+                    <stop offset="0%" stopColor={getColorByName(entry.name)} stopOpacity={1} />
+                    <stop offset="100%" stopColor={getColorByName(entry.name)} stopOpacity={0.7} />
                   </radialGradient>
                 ))}
               </defs>
@@ -166,7 +186,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                 {chartData.map((_: any, index: number) => (
                   <Cell 
                     key={`cell-${index}`} 
-                    fill={`url(#pieGradient${index % PIE_COLORS.length})`}
+                    fill={`url(#pieGradient${index})`}
                     stroke="#fff"
                     strokeWidth={2}
                   />
@@ -180,11 +200,6 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }} 
               />
-              <Legend 
-                verticalAlign="bottom" 
-                height={36}
-                iconType="circle"
-              />
             </PieChart>
           </ResponsiveContainer>
         );
@@ -194,10 +209,10 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <defs>
-                {PIE_COLORS.map((color, index) => (
+                {chartData.map((entry: any, index: number) => (
                   <radialGradient key={`donutGradient-${index}`} id={`donutGradient${index}`}>
-                    <stop offset="30%" stopColor={color} stopOpacity={1} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0.6} />
+                    <stop offset="30%" stopColor={getColorByName(entry.name)} stopOpacity={1} />
+                    <stop offset="100%" stopColor={getColorByName(entry.name)} stopOpacity={0.6} />
                   </radialGradient>
                 ))}
               </defs>
@@ -240,7 +255,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                 {chartData.map((_: any, index: number) => (
                   <Cell 
                     key={`cell-${index}`} 
-                    fill={`url(#donutGradient${index % PIE_COLORS.length})`}
+                    fill={`url(#donutGradient${index})`}
                     stroke="#fff"
                     strokeWidth={3}
                   />
@@ -253,11 +268,6 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                   borderRadius: '8px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }} 
-              />
-              <Legend 
-                verticalAlign="bottom" 
-                height={36}
-                iconType="circle"
               />
             </PieChart>
           </ResponsiveContainer>
@@ -292,7 +302,6 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }} 
               />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} />
               <Line 
                 type="monotone" 
                 dataKey="value" 
@@ -327,7 +336,6 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }} 
               />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} />
               <Area 
                 type="monotone" 
                 dataKey="value" 
@@ -365,7 +373,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
 
       {/* Chart Controls */}
       <div className="flex flex-wrap gap-4 mb-4">
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Data Metric</label>
           <select
             value={metric}
@@ -380,7 +388,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
           </select>
         </div>
 
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[150px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Chart Type</label>
           <select
             value={chartType}
@@ -392,6 +400,22 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
             <option value="line">Line Chart</option>
             <option value="donut">Donut Chart</option>
             <option value="area">Area Chart</option>
+          </select>
+        </div>
+
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Time Range</label>
+          <select
+            value={timeRange}
+            onChange={handleTimeRangeChange}
+            className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+          >
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+            <option value="3months">Last 3 months</option>
+            <option value="6months">Last 6 months</option>
+            <option value="1year">Last year</option>
+            <option value="all">All time</option>
           </select>
         </div>
       </div>

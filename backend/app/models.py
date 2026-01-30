@@ -27,6 +27,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum('super_admin', 'admin', 'user', name='user_roles'), nullable=False, default='user')
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    timezone = db.Column(db.String(50), default='UTC', nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login = db.Column(db.DateTime, nullable=True)
@@ -225,7 +226,6 @@ class AuditLog(db.Model):
     resource_id = db.Column(db.Integer, nullable=True)
     details = db.Column(db.JSON, nullable=True)  # Additional context
     ip_address = db.Column(db.String(45), nullable=True)
-    user_agent = db.Column(db.String(255), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     
     # Relationships
@@ -238,6 +238,46 @@ class AuditLog(db.Model):
     
     def __repr__(self):
         return f'<AuditLog {self.action} on {self.resource_type}>'
+
+
+class PlaybookAuditLog(db.Model):
+    """
+    Detailed audit trail for playbook changes
+    
+    Features:
+    - Tracks all playbook modifications (create, update, delete)
+    - Stores complete old and new content for diff comparison
+    - Preserves history even after playbook deletion
+    - Links to user who made the change
+    """
+    __tablename__ = 'playbook_audit_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    playbook_id = db.Column(db.Integer, nullable=False, index=True)  # Not FK to preserve deleted playbook history
+    playbook_name = db.Column(db.String(255), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    action = db.Column(
+        db.Enum('created', 'updated', 'deleted', 'uploaded', 'replaced', name='playbook_action'),
+        nullable=False,
+        index=True
+    )
+    old_content = db.Column(db.Text, nullable=True)
+    new_content = db.Column(db.Text, nullable=True)
+    changes_description = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    # Relationships
+    user = db.relationship('User', backref='playbook_audit_logs')
+    
+    __table_args__ = (
+        Index('idx_playbook_audit_playbook_id', 'playbook_id'),
+        Index('idx_playbook_audit_action', 'action'),
+        Index('idx_playbook_audit_created_at', 'created_at'),
+    )
+    
+    def __repr__(self):
+        return f'<PlaybookAuditLog {self.action} on {self.playbook_name}>'
 
 
 # Event listeners for automatic timestamp updates

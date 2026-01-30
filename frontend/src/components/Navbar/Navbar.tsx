@@ -48,7 +48,7 @@ export const Navbar: React.FC = () => {
 
       {/* Center - Title */}
       <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-        Infra Ansible Automation
+        JADE GLOBAL AUTOMATION HUB
       </h1>
 
       {/* Right side - User info and logout */}

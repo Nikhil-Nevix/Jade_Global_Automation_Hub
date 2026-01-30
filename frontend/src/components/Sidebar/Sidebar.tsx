@@ -13,6 +13,7 @@ import {
   Users,
   Settings as SettingsIcon,
   X,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -43,6 +44,12 @@ const navItems: NavItem[] = [
     path: '/playbooks',
     icon: FileCode,
     roles: ['super_admin', 'admin', 'user'],
+  },
+  {
+    name: 'Playbook Audit Logs',
+    path: '/playbook-audit',
+    icon: History,
+    roles: ['super_admin', 'admin'],
   },
   {
     name: 'Jobs',
@@ -90,7 +97,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <img src={logo} alt="Logo" className="w-8 h-8 rounded-lg shadow-md" />
-            <span className="font-semibold text-gray-900 dark:text-white">Infra Ansible Automation</span>
+            <span className="font-semibold text-gray-900 dark:text-white">Jade Global Automation Hub</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
