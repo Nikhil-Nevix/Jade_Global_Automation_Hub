@@ -9,9 +9,7 @@ import { Lock, User, Mail, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { authApi } from '../../api/api';
 import type { LoginRequest } from '../../types';
-import bgImage from '../../assets/PL-1.jpg';
-import logo from '../../assets/Logo1.png';
-import jadeLogo from '../../assets/JadeLogo-bg.png';
+import jadeLogo from '../../assets/project_logo.png';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -149,20 +147,11 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-gray-50 via-purple-50 to-gray-100">
-      {/* Logo in top left corner */}
-      <div className="absolute top-8 left-8">
-        <img 
-          src={logo} 
-          alt="Logo" 
-          className="w-40 h-40 shadow-md rounded-2xl" 
-        />
-      </div>
-      
       {/* Main content centered */}
       <div className="max-w-md w-full">
         {/* Jade Logo and title */}
         <div className="text-center mb-8">
-          <img src={jadeLogo} alt="Jade Logo" className="w-64 h-32 mx-auto mb-6" />
+          <img src={jadeLogo} alt="Jade Logo" className="w-full max-w-md h-auto mx-auto mb-6" />
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Jade Global Automation Hub</h1>
           <p className="text-gray-600">Streamline your infrastructure management</p>
         </div>
