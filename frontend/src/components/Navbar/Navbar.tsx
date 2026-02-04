@@ -7,6 +7,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Menu, LogOut, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
+import { NotificationBell } from '../NotificationBell';
+import { getUserTimezone } from '../../utils/timezone';
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuthStore();
@@ -51,8 +53,11 @@ export const Navbar: React.FC = () => {
         JADE GLOBAL AUTOMATION HUB
       </h1>
 
-      {/* Right side - User info and logout */}
-      <div className="flex items-center gap-4">
+      {/* Right side - Notifications and User info */}
+      <div className="flex items-center gap-2">
+        {/* Notification Bell */}
+        <NotificationBell />
+        
         {/* Profile Dropdown */}
         {user && (
           <div className="relative" ref={dropdownRef}>
@@ -103,7 +108,12 @@ export const Navbar: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Last Login:</span>
                       <span className="text-gray-900 dark:text-white text-xs">
-                        {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                        {user.last_login ? new Intl.DateTimeFormat('en-US', {
+                          timeZone: getUserTimezone(),
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        }).format(new Date(user.last_login)) : 'Never'}
                       </span>
                     </div>
                   </div>

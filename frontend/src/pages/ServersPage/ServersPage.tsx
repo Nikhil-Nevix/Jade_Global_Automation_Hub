@@ -38,7 +38,9 @@ export const ServersPage: React.FC = () => {
     os_type: 'linux',
     ssh_user: 'root',
     ssh_port: 22,
+    tags: [],
   });
+  const [tagInput, setTagInput] = useState('');
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const canEdit = isAdmin;
@@ -104,7 +106,9 @@ export const ServersPage: React.FC = () => {
       os_type: 'linux',
       ssh_user: 'root',
       ssh_port: 22,
+      tags: [],
     });
+    setTagInput('');
     setShowModal(true);
   };
 
@@ -118,9 +122,11 @@ export const ServersPage: React.FC = () => {
       ssh_user: server.ssh_user,
       ssh_port: server.ssh_port,
       ssh_key_path: server.ssh_key_path,
+      tags: server.tags || [],
       environment: server.environment,
       description: server.description,
     });
+    setTagInput('');
     setShowModal(true);
   };
 
@@ -136,6 +142,7 @@ export const ServersPage: React.FC = () => {
         ssh_user: formData.ssh_user,
         ssh_port: formData.ssh_port,
         ssh_key_path: formData.ssh_key_path,
+        tags: formData.tags || [],
       };
 
       console.log('Sending server data:', serverData);
@@ -326,6 +333,9 @@ export const ServersPage: React.FC = () => {
                   Server Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Tags
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                   IP Address
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -355,6 +365,25 @@ export const ServersPage: React.FC = () => {
                           )}
                         </div>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {server.tags && server.tags.length > 0 ? (
+                        server.tags.slice(0, 3).map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700"
+                          >
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">No tags</span>
+                      )}
+                      {server.tags && server.tags.length > 3 && (
+                        <span className="text-xs text-gray-500">+{server.tags.length - 3}</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -539,6 +568,75 @@ export const ServersPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, ssh_key_path: e.target.value })}
                   className="w-full px-4 py-2.5 bg-gray-50 text-gray-900 placeholder-gray-400 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
+              </div>
+
+              {/* Tags Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tags <span className="text-gray-500 text-xs">(for grouping servers)</span>
+                </label>
+                <div className="space-y-2">
+                  {/* Tag input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add tag (e.g., production, web-server)"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && tagInput.trim()) {
+                          e.preventDefault();
+                          const newTag = tagInput.trim();
+                          if (!formData.tags?.includes(newTag)) {
+                            setFormData({ ...formData, tags: [...(formData.tags || []), newTag] });
+                          }
+                          setTagInput('');
+                        }
+                      }}
+                      className="flex-1 px-4 py-2.5 bg-gray-50 text-gray-900 placeholder-gray-400 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tagInput.trim()) {
+                          const newTag = tagInput.trim();
+                          if (!formData.tags?.includes(newTag)) {
+                            setFormData({ ...formData, tags: [...(formData.tags || []), newTag] });
+                          }
+                          setTagInput('');
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors font-medium"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {/* Display tags */}
+                  {formData.tags && formData.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {formData.tags.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                tags: formData.tags?.filter((_, i) => i !== index)
+                              });
+                            }}
+                            className="hover:text-primary-900"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Modal Footer */}
@@ -732,7 +830,14 @@ export const ServersPage: React.FC = () => {
                   {serverMetrics?.last_monitored && (
                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Last updated: {new Date(serverMetrics.last_monitored).toLocaleString()}
+                        Last updated: {new Intl.DateTimeFormat('en-US', {
+                          timeZone: getUserTimezone(),
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        }).format(new Date(serverMetrics.last_monitored))}
                       </p>
                     </div>
                   )}
@@ -745,37 +850,40 @@ export const ServersPage: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Created At</p>
-                    <p className="font-medium text-gray-900">{new Date(selectedServer.created_at).toLocaleString('en-US', {
-                      month: 'numeric',
+                    <p className="font-medium text-gray-900">{new Intl.DateTimeFormat('en-US', {
+                      timeZone: getUserTimezone(),
+                      month: 'short',
                       day: 'numeric',
                       year: 'numeric',
-                      hour: 'numeric',
+                      hour: '2-digit',
                       minute: '2-digit',
                       hour12: true
-                    })}</p>
+                    }).format(new Date(selectedServer.created_at))}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Last Updated</p>
-                    <p className="font-medium text-gray-900">{new Date(selectedServer.updated_at).toLocaleString('en-US', {
-                      month: 'numeric',
+                    <p className="font-medium text-gray-900">{new Intl.DateTimeFormat('en-US', {
+                      timeZone: getUserTimezone(),
+                      month: 'short',
                       day: 'numeric',
                       year: 'numeric',
-                      hour: 'numeric',
+                      hour: '2-digit',
                       minute: '2-digit',
                       hour12: true
-                    })}</p>
+                    }).format(new Date(selectedServer.updated_at))}</p>
                   </div>
                   {selectedServer.last_seen && (
                     <div className="col-span-2">
                       <p className="text-sm text-gray-600 mb-1">Last Seen</p>
-                      <p className="font-medium text-gray-900">{new Date(selectedServer.last_seen).toLocaleString('en-US', {
-                        month: 'numeric',
+                      <p className="font-medium text-gray-900">{new Intl.DateTimeFormat('en-US', {
+                        timeZone: getUserTimezone(),
+                        month: 'short',
                         day: 'numeric',
                         year: 'numeric',
-                        hour: 'numeric',
+                        hour: '2-digit',
                         minute: '2-digit',
                         hour12: true
-                      })}</p>
+                      }).format(new Date(selectedServer.last_seen))}</p>
                     </div>
                   )}
                 </div>

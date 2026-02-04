@@ -4,12 +4,16 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Search, Upload, Trash2, Play, RefreshCw, X, UploadCloud, Edit, Save, Grid, List, Copy, Clock, FileText, History } from 'lucide-react';
+import { Search, Upload, Trash2, Play, RefreshCw, X, UploadCloud, Edit, Save, Grid, List, Copy, Clock, FileText, History, Server as ServerIcon, Folder, Download, Package } from 'lucide-react';
 import { playbooksApi, serversApi, jobsApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { useNavigate } from 'react-router-dom';
 import type { Playbook, Server } from '../../types';
+import { MultiServerExecutionModal } from '../../components/MultiServerExecutionModal';
+import { UploadPlaybookModal } from '../../components/UploadPlaybookModal';
+import { FolderEditModal } from '../../components/FolderEditModal';
+import { getUserTimezone } from '../../utils/timezone';
 
 type ViewMode = 'card' | 'table';
 type Category = 'all' | 'maintenance' | 'web-server' | 'deployment' | 'database' | 'security';
@@ -29,7 +33,9 @@ export const PlaybooksPage: React.FC = () => {
   const [playbookDurations, setPlaybookDurations] = useState<Record<number, string>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showRunModal, setShowRunModal] = useState(false);
+  const [showMultiServerModal, setShowMultiServerModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showFolderEditModal, setShowFolderEditModal] = useState(false);
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
   const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -231,6 +237,29 @@ export const PlaybooksPage: React.FC = () => {
     }
   };
 
+  const handleDownload = async (playbook: Playbook) => {
+    if (!playbook.is_folder) {
+      addNotification('info', 'Download is only available for folder playbooks');
+      return;
+    }
+
+    try {
+      const blob = await playbooksApi.downloadFolder(playbook.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${playbook.name}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      addNotification('success', 'Playbook downloaded successfully');
+    } catch (error: any) {
+      console.error('Failed to download playbook:', error);
+      addNotification('error', error.response?.data?.message || 'Download failed');
+    }
+  };
+
   const handleRun = (playbook: Playbook) => {
     setSelectedPlaybook(playbook);
     setShowRunModal(true);
@@ -264,6 +293,14 @@ export const PlaybooksPage: React.FC = () => {
 
   const handleEdit = async (playbook: Playbook) => {
     setSelectedPlaybook(playbook);
+    
+    // Check if it's a folder playbook
+    if (playbook.is_folder) {
+      setShowFolderEditModal(true);
+      return;
+    }
+    
+    // For single file playbooks
     setShowEditModal(true);
     setLoadingContent(true);
     
@@ -475,8 +512,21 @@ export const PlaybooksPage: React.FC = () => {
                         )}
                       </div>
                       
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                        {playbook.name}
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                        {playbook.is_folder ? (
+                          <>
+                            <Folder className="h-5 w-5 text-yellow-500" />
+                            <span>{playbook.name}</span>
+                            <span className="text-sm text-gray-500 font-normal">
+                              ({playbook.file_count || 0} files)
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="h-5 w-5 text-blue-500" />
+                            <span>{playbook.name}</span>
+                          </>
+                        )}
                       </h3>
                       
                       <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">
@@ -484,10 +534,21 @@ export const PlaybooksPage: React.FC = () => {
                       </p>
                       
                       <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-500 font-mono bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded">
-                        <FileText className="h-3.5 w-3.5" />
-                        <span className="truncate" title={playbook.file_path}>
-                          {playbook.file_path}
-                        </span>
+                        {playbook.is_folder ? (
+                          <>
+                            <Package className="h-3.5 w-3.5" />
+                            <span className="truncate" title={playbook.main_playbook_file}>
+                              {playbook.main_playbook_file || 'site.yml'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="h-3.5 w-3.5" />
+                            <span className="truncate" title={playbook.file_path}>
+                              {playbook.file_path}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -502,6 +563,30 @@ export const PlaybooksPage: React.FC = () => {
                           <Play className="h-4 w-4" />
                           Run
                         </button>
+                        
+                        {/* Multi-Server Execute Button - All Users */}
+                        <button
+                          onClick={() => {
+                            setSelectedPlaybook(playbook);
+                            setShowMultiServerModal(true);
+                          }}
+                          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-lg inline-flex items-center justify-center gap-2 transition-all shadow-glow-sm hover:shadow-glow font-medium"
+                          title="Execute on multiple servers"
+                        >
+                          <ServerIcon className="h-4 w-4" />
+                          Multi
+                        </button>
+
+                        {/* Download Button - For folder playbooks */}
+                        {playbook.is_folder && (
+                          <button
+                            onClick={() => handleDownload(playbook)}
+                            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg inline-flex items-center justify-center gap-2 transition-all shadow-glow-sm hover:shadow-glow font-medium"
+                            title="Download as ZIP"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                        )}
                         
                         {/* Admin Actions */}
                         {isAdmin && (
@@ -586,7 +671,23 @@ export const PlaybooksPage: React.FC = () => {
                   filteredPlaybooks.map((playbook) => (
                     <tr key={playbook.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">{playbook.name}</div>
+                        <div className="flex items-center gap-2">
+                          {playbook.is_folder ? (
+                            <Folder className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                          ) : (
+                            <FileText className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                          )}
+                          <div className="flex flex-col">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{playbook.name}</div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full w-fit mt-1 ${
+                              playbook.is_folder 
+                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' 
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            }`}>
+                              {playbook.is_folder ? 'Folder' : 'File'}
+                            </span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
@@ -600,30 +701,34 @@ export const PlaybooksPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                         <div className="flex flex-col">
-                          <span>{new Date(playbook.created_at).toLocaleDateString('en-US', {
+                          <span>{new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric'
-                          })}</span>
-                          <span className="text-xs text-gray-600 dark:text-gray-500">{new Date(playbook.created_at).toLocaleTimeString('en-US', {
+                          }).format(new Date(playbook.created_at))}</span>
+                          <span className="text-xs text-gray-600 dark:text-gray-500">{new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             hour: '2-digit',
                             minute: '2-digit',
                             hour12: true
-                          })}</span>
+                          }).format(new Date(playbook.created_at))}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                         <div className="flex flex-col">
-                          <span>{new Date(playbook.updated_at).toLocaleDateString('en-US', {
+                          <span>{new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric'
-                          })}</span>
-                          <span className="text-xs text-gray-600 dark:text-gray-500">{new Date(playbook.updated_at).toLocaleTimeString('en-US', {
+                          }).format(new Date(playbook.updated_at))}</span>
+                          <span className="text-xs text-gray-600 dark:text-gray-500">{new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             hour: '2-digit',
                             minute: '2-digit',
                             hour12: true
-                          })}</span>
+                          }).format(new Date(playbook.updated_at))}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -675,100 +780,16 @@ export const PlaybooksPage: React.FC = () => {
       </div>
     </div>
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-glow rounded-lg w-full max-w-xl">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Upload Ansible Playbook
-              </h3>
-              <button
-                onClick={() => setShowUploadModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleUpload} className="px-6 py-6 space-y-5">
-              {/* File Upload Area */}
-              <div>
-                <label
-                  className="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <UploadCloud className="w-12 h-12 mb-3 text-gray-400" />
-                    <p className="mb-2 text-sm text-gray-700">
-                      <span className="font-semibold">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-gray-600">YAML files only (.yml or .yaml, max 500 KB)</p>
-                    {uploadData.file && (
-                      <p className="mt-2 text-sm text-primary-500 font-medium">
-                        Selected: {uploadData.file.name}
-                      </p>
-                    )}
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".yml,.yaml"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Playbook Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="My New Playbook"
-                  value={uploadData.name}
-                  onChange={(e) => setUploadData({ ...uploadData, name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-white text-gray-900 placeholder-gray-400 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={uploadData.description}
-                  onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })}
-                  rows={3}
-                  placeholder="Enter playbook description..."
-                  className="w-full px-4 py-2.5 bg-white text-gray-900 placeholder-gray-400 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="px-6 py-2.5 text-gray-700 bg-gray-200 border border-gray-300 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors font-medium shadow-sm"
-                >
-                  Upload
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Upload Modal - New Component */}
+      <UploadPlaybookModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={() => {
+          loadData();
+          addNotification('success', 'Playbook uploaded successfully');
+        }}
+        onError={(message) => addNotification('error', message)}
+      />
 
       {/* Run Modal */}
       {showRunModal && selectedPlaybook && (
@@ -912,6 +933,30 @@ export const PlaybooksPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Folder Edit Modal */}
+      {showFolderEditModal && selectedPlaybook && (
+        <FolderEditModal
+          playbook={selectedPlaybook}
+          onClose={() => {
+            setShowFolderEditModal(false);
+            setSelectedPlaybook(null);
+          }}
+          onSave={() => {
+            loadData(); // Reload playbooks to refresh updated_at timestamp
+          }}
+        />
+      )}
+
+      {/* Multi-Server Execution Modal */}
+      <MultiServerExecutionModal
+        isOpen={showMultiServerModal}
+        onClose={() => {
+          setShowMultiServerModal(false);
+          setSelectedPlaybook(null);
+        }}
+        playbook={selectedPlaybook}
+      />
     </>
   );
 };

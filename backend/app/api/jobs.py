@@ -16,7 +16,7 @@ from app.schemas import (
 # Import celery task
 from app.tasks import execute_playbook_task
 
-jobs_bp = Blueprint('jobs', __name__, url_prefix='/jobs')
+jobs_bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
 
 
 @jobs_bp.route('', methods=['GET'])
@@ -328,4 +328,295 @@ def get_job_statistics():
         return jsonify(error_schema.dump({
             'error': 'internal_error',
             'message': 'An error occurred while fetching statistics'
+        })), 500
+
+
+@jobs_bp.route('/batch', methods=['POST'])
+@jwt_required()
+def create_batch_job():
+    """
+    Create and execute a batch job on multiple servers
+    
+    Request Body:
+        playbook_id: int (required)
+        server_ids: list[int] (required) - List of server IDs to execute on
+        extra_vars: dict (optional) - Extra Ansible variables
+        concurrent_limit: int (optional, default 5) - Max concurrent executions
+        stop_on_failure: bool (optional, default False) - Stop all if one fails
+        execution_strategy: str (optional, default 'parallel') - 'parallel' or 'sequential'
+    
+    Returns:
+        Parent batch job with child jobs
+    """
+    try:
+        # Get current user
+        current_user_id = get_jwt_identity()
+        current_user = auth_service.get_current_user(current_user_id)
+        
+        # Check permission - allow user, admin, and super_admin to create jobs
+        if not auth_service.check_permission(current_user, 'user'):
+            return jsonify(error_schema.dump({
+                'error': 'forbidden',
+                'message': 'Insufficient permissions to create jobs'
+            })), 403
+        
+        # Get request data
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('playbook_id'):
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'playbook_id is required'
+            })), 400
+        
+        if not data.get('server_ids') or not isinstance(data['server_ids'], list):
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'server_ids must be a non-empty list'
+            })), 400
+        
+        if len(data['server_ids']) < 2:
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'Batch jobs require at least 2 servers. Use regular job creation for single server execution.'
+            })), 400
+        
+        # Extract parameters
+        playbook_id = data['playbook_id']
+        server_ids = data['server_ids']
+        extra_vars = data.get('extra_vars')
+        concurrent_limit = data.get('concurrent_limit', 5)
+        stop_on_failure = data.get('stop_on_failure', False)
+        execution_strategy = data.get('execution_strategy', 'parallel')
+        
+        # Validate execution strategy
+        if execution_strategy not in ['parallel', 'sequential']:
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'execution_strategy must be either "parallel" or "sequential"'
+            })), 400
+        
+        # Create batch job
+        batch_job = job_service.create_batch_job(
+            playbook_id=playbook_id,
+            server_ids=server_ids,
+            user_id=current_user_id,
+            extra_vars=extra_vars,
+            concurrent_limit=concurrent_limit,
+            stop_on_failure=stop_on_failure,
+            execution_strategy=execution_strategy
+        )
+        
+        return jsonify({
+            'id': batch_job.id,
+            'job_id': batch_job.job_id,
+            'is_batch_job': batch_job.is_batch_job,
+            'batch_config': batch_job.batch_config,
+            'status': batch_job.status,
+            'playbook_id': batch_job.playbook_id,
+            'total_servers': len(server_ids),
+            'created_at': batch_job.created_at.isoformat(),
+            'message': f'Batch job created successfully. Executing on {len(server_ids)} servers.'
+        }), 201
+    
+    except ValidationError as err:
+        return jsonify(error_schema.dump({
+            'error': 'validation_error',
+            'message': 'Invalid request data',
+            'details': err.messages
+        })), 400
+    
+    except ValueError as err:
+        return jsonify(error_schema.dump({
+            'error': 'creation_failed',
+            'message': str(err)
+        })), 400
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'An error occurred while creating batch job: {str(err)}'
+        })), 500
+
+
+@jobs_bp.route('/<int:job_id>/children', methods=['GET'])
+@jwt_required()
+def get_child_jobs(job_id):
+    """
+    Get all child jobs for a parent batch job
+    
+    Returns:
+        List of child jobs with their status
+    """
+    try:
+        # Check if job exists and is a batch job
+        job = job_service.get_job(job_id)
+        if not job:
+            return jsonify(error_schema.dump({
+                'error': 'not_found',
+                'message': f'Job with ID {job_id} not found'
+            })), 404
+        
+        if not job.is_batch_job:
+            return jsonify(error_schema.dump({
+                'error': 'invalid_request',
+                'message': 'This job is not a batch job'
+            })), 400
+        
+        # Get child jobs
+        child_jobs = job_service.get_child_jobs(job_id)
+        
+        return jsonify({
+            'parent_job_id': job_id,
+            'total_children': len(child_jobs),
+            'children': jobs_schema.dump(child_jobs)
+        }), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': 'An error occurred while fetching child jobs'
+        })), 500
+
+
+@jobs_bp.route('/analytics/success-rate-trends', methods=['GET'])
+@jwt_required()
+def get_success_rate_trends():
+    """
+    Get job success rate trends over time
+    
+    Query Parameters:
+        time_range: str - '7days', '30days', '3months', 'custom'
+        start_date: str - Start date for custom range (ISO format)
+        end_date: str - End date for custom range (ISO format)
+        granularity: str - 'daily', 'weekly', 'monthly' (default: 'daily')
+    
+    Returns:
+        Success rate trends data
+    """
+    try:
+        time_range = request.args.get('time_range', '30days')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        granularity = request.args.get('granularity', 'daily')
+        
+        trends = job_service.get_success_rate_trends(time_range, start_date, end_date, granularity)
+        
+        return jsonify(trends), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'An error occurred while fetching success rate trends: {str(err)}'
+        })), 500
+
+
+@jobs_bp.route('/analytics/execution-time', methods=['GET'])
+@jwt_required()
+def get_execution_time_analytics():
+    """
+    Get average execution time per playbook
+    
+    Query Parameters:
+        time_range: str - '7days', '30days', '3months', 'custom'
+        start_date: str - Start date for custom range (ISO format)
+        end_date: str - End date for custom range (ISO format)
+    
+    Returns:
+        Execution time analytics data
+    """
+    try:
+        time_range = request.args.get('time_range', '30days')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        analytics = job_service.get_execution_time_analytics(time_range, start_date, end_date)
+        
+        return jsonify(analytics), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'An error occurred while fetching execution time analytics: {str(err)}'
+        })), 500
+
+
+@jobs_bp.route('/analytics/failure-analysis', methods=['GET'])
+@jwt_required()
+def get_failure_analysis():
+    """
+    Get failed job analysis - which playbooks/servers fail most
+    
+    Query Parameters:
+        time_range: str - '7days', '30days', '3months', 'custom'
+        start_date: str - Start date for custom range (ISO format)
+        end_date: str - End date for custom range (ISO format)
+        group_by: str - 'playbook', 'server', 'both' (default: 'both')
+    
+    Returns:
+        Failure analysis data
+    """
+    try:
+        time_range = request.args.get('time_range', '30days')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        group_by = request.args.get('group_by', 'both')
+        
+        analysis = job_service.get_failure_analysis(time_range, start_date, end_date, group_by)
+        
+        return jsonify(analysis), 200
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'An error occurred while fetching failure analysis: {str(err)}'
+        })), 500
+
+
+@jobs_bp.route('/analytics/export', methods=['GET'])
+@jwt_required()
+def export_analytics():
+    """
+    Export analytics data as PDF or CSV
+    
+    Query Parameters:
+        format: str - 'pdf' or 'csv' (required)
+        time_range: str - '7days', '30days', '3months', 'custom'
+        start_date: str - Start date for custom range (ISO format)
+        end_date: str - End date for custom range (ISO format)
+    
+    Returns:
+        File download
+    """
+    try:
+        export_format = request.args.get('format', 'csv').lower()
+        time_range = request.args.get('time_range', '30days')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if export_format not in ['pdf', 'csv']:
+            return jsonify(error_schema.dump({
+                'error': 'validation_error',
+                'message': 'Invalid export format. Use "pdf" or "csv"'
+            })), 400
+        
+        file_data, filename, mimetype = job_service.export_analytics(
+            export_format, time_range, start_date, end_date
+        )
+        
+        from flask import send_file
+        import io
+        
+        return send_file(
+            io.BytesIO(file_data),
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'An error occurred while exporting analytics: {str(err)}'
         })), 500

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Shield, User as UserIcon, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { usersApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
+import { getUserTimezone } from '../../utils/timezone';
 import type { User } from '../../types';
 
 export const UsersPage: React.FC = () => {
@@ -151,14 +152,15 @@ export const UsersPage: React.FC = () => {
   const formatLastLogin = (lastLogin: string | null) => {
     if (!lastLogin) return 'Never';
     const date = new Date(lastLogin);
-    return date.toLocaleString('en-US', {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: getUserTimezone(),
       month: 'numeric',
       day: 'numeric',
       year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
-    });
+    }).format(date);
   };
 
   const getInitials = (username: string) => {

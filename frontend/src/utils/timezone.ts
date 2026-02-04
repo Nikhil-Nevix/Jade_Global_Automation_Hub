@@ -97,6 +97,43 @@ export function setUserTimezone(timezone: string): void {
 }
 
 /**
+ * Format date/time for Job Details page using user's timezone
+ * @param dateString - ISO date string from backend
+ * @param timezone - IANA timezone string (defaults to user's timezone)
+ * @returns Formatted date string (e.g., "Jan 15, 2026, 04:12:30 PM")
+ */
+export function formatJobDateTime(
+  dateString: string | null | undefined,
+  timezone?: string
+): string {
+  if (!dateString) return 'N/A';
+
+  const tz = timezone || getUserTimezone();
+
+  try {
+    const date = new Date(dateString);
+
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(date);
+  } catch (error) {
+    console.error('Error formatting job date time:', error);
+    return dateString;
+  }
+}
+
+/**
  * Format date for display with two lines (date + time)
  * @param dateString - ISO date string from backend
  * @param timezone - IANA timezone string

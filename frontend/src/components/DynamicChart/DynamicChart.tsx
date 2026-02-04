@@ -30,7 +30,7 @@ export type DataMetric =
   | 'server-os-distribution'
   | 'server-status'
   | 'server-environment';
-export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all';
+export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom';
 
 interface DynamicChartProps {
   chartId: string;

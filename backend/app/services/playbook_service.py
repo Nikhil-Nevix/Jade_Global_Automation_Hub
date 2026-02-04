@@ -1,14 +1,22 @@
 """
 Playbook Service
-Handles playbook management, upload, and storage
+Handles playbook management, upload, and storage (single file and folder support)
 """
 import os
 import hashlib
+import uuid
+import tempfile
 from werkzeug.utils import secure_filename
 from flask import request
 from app.extensions import db
 from app.models import Playbook, AuditLog, PlaybookAuditLog
 from app.config import get_config
+from app.utils.file_manager import (
+    extract_zip, generate_file_tree, find_yaml_files, auto_detect_main_playbook,
+    get_folder_size, count_files, read_file_content, write_file_content,
+    create_zip_from_folder, delete_folder, sanitize_path, validate_filename,
+    get_all_files, FileManagerError
+)
 
 
 class PlaybookService:
@@ -119,6 +127,306 @@ class PlaybookService:
             )
         
         return playbook
+    
+    @staticmethod
+    def create_playbook_from_zip(name, zip_file_obj, main_playbook_file, description=None, user_id=None):
+        """
+        Create a new playbook from ZIP file containing folder structure
+        
+        Args:
+            name: Playbook name
+            zip_file_obj: ZIP file object from upload
+            main_playbook_file: Relative path to main playbook file within extracted folder
+            description: Playbook description
+            user_id: ID of user creating the playbook
+        
+        Returns:
+            Created playbook object
+        
+        Raises:
+            ValueError: If validation fails
+        """
+        # Check if playbook with same name exists
+        existing = Playbook.query.filter_by(name=name).first()
+        if existing:
+            raise ValueError(f"Playbook with name '{name}' already exists")
+        
+        # Validate file exists
+        if not zip_file_obj:
+            raise ValueError("No file provided")
+        
+        # Validate file size (max 20 MB)
+        zip_file_obj.seek(0, os.SEEK_END)
+        file_size = zip_file_obj.tell()
+        zip_file_obj.seek(0)
+        
+        max_size_bytes = 20 * 1024 * 1024  # 20 MB
+        if file_size > max_size_bytes:
+            file_size_mb = file_size / 1024 / 1024
+            raise ValueError(f"ZIP file size exceeds 20 MB limit. Your file is {file_size_mb:.2f} MB")
+        
+        if file_size == 0:
+            raise ValueError("ZIP file is empty")
+        
+        # Setup paths
+        config = get_config()
+        upload_folder = config.UPLOAD_FOLDER
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        # Save ZIP temporarily
+        temp_zip_path = os.path.join(tempfile.gettempdir(), f"playbook_{uuid.uuid4().hex}.zip")
+        zip_file_obj.save(temp_zip_path)
+        
+        # Create unique folder for this playbook
+        playbook_folder_name = f"{secure_filename(name)}_{uuid.uuid4().hex[:8]}"
+        playbook_folder_path = os.path.join(upload_folder, playbook_folder_name)
+        
+        try:
+            # Extract ZIP with security validation
+            success, message = extract_zip(temp_zip_path, playbook_folder_path)
+            if not success:
+                raise ValueError(f"ZIP extraction failed: {message}")
+            
+            # Find all YAML files
+            yaml_files = find_yaml_files(playbook_folder_path)
+            if not yaml_files:
+                delete_folder(playbook_folder_path)
+                raise ValueError("No YAML files found in ZIP")
+            
+            # Validate main playbook file exists
+            if main_playbook_file not in yaml_files:
+                delete_folder(playbook_folder_path)
+                raise ValueError(f"Main playbook file '{main_playbook_file}' not found in ZIP")
+            
+            # Generate file structure tree
+            file_structure = generate_file_tree(playbook_folder_path, playbook_folder_path)
+            
+            # Calculate folder statistics
+            total_size_kb = get_folder_size(playbook_folder_path)
+            file_count = count_files(playbook_folder_path)
+            
+            # Create playbook record
+            playbook = Playbook(
+                name=name,
+                description=description,
+                file_path=playbook_folder_path,
+                is_folder=True,
+                main_playbook_file=main_playbook_file,
+                file_structure=file_structure,
+                file_count=file_count,
+                total_size_kb=total_size_kb,
+                is_active=True
+            )
+            
+            db.session.add(playbook)
+            db.session.commit()
+            
+            # Read main playbook content for audit
+            main_file_path = os.path.join(playbook_folder_path, main_playbook_file)
+            success, new_content, _ = read_file_content(main_file_path)
+            
+            # Create audit logs
+            if user_id:
+                PlaybookService._create_audit_log(
+                    user_id=user_id,
+                    action='CREATE',
+                    resource_id=playbook.id,
+                    details={
+                        'name': name, 
+                        'file_path': playbook_folder_path,
+                        'is_folder': True,
+                        'file_count': file_count,
+                        'main_file': main_playbook_file
+                    }
+                )
+                
+                PlaybookService._create_playbook_audit_log(
+                    playbook_id=playbook.id,
+                    playbook_name=name,
+                    user_id=user_id,
+                    action='created',
+                    old_content=None,
+                    new_content=new_content if success else None,
+                    changes_description=f'Folder playbook "{name}" created with {file_count} files'
+                )
+            
+            return playbook
+            
+        finally:
+            # Cleanup temp ZIP file
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path)
+    
+    @staticmethod
+    def get_folder_file_list(playbook_id):
+        """
+        Get list of all files in a folder playbook
+        
+        Args:
+            playbook_id: Playbook ID
+        
+        Returns:
+            List of file paths (all files, not just YAML)
+        
+        Raises:
+            ValueError: If playbook not found or not a folder
+        """
+        playbook = Playbook.query.get(playbook_id)
+        if not playbook:
+            raise ValueError(f"Playbook with ID {playbook_id} not found")
+        
+        if not playbook.is_folder:
+            raise ValueError("Playbook is not a folder")
+        
+        # Return ALL files in the folder (not just YAML)
+        all_files = get_all_files(playbook.file_path)
+        return all_files
+    
+    @staticmethod
+    def get_folder_file_content(playbook_id, file_path):
+        """
+        Get content of a specific file within folder playbook
+        
+        Args:
+            playbook_id: Playbook ID
+            file_path: Relative path to file within playbook folder
+        
+        Returns:
+            File content as string
+        
+        Raises:
+            ValueError: If playbook not found, not a folder, or file doesn't exist
+        """
+        playbook = Playbook.query.get(playbook_id)
+        if not playbook:
+            raise ValueError(f"Playbook with ID {playbook_id} not found")
+        
+        if not playbook.is_folder:
+            raise ValueError("Playbook is not a folder")
+        
+        # Sanitize path to prevent directory traversal
+        try:
+            safe_path = sanitize_path(file_path)
+        except FileManagerError as e:
+            raise ValueError(str(e))
+        
+        full_path = os.path.join(playbook.file_path, safe_path)
+        
+        if not os.path.exists(full_path):
+            raise ValueError(f"File not found: {file_path}")
+        
+        success, content, error = read_file_content(full_path)
+        if not success:
+            raise ValueError(error)
+        
+        return content
+    
+    @staticmethod
+    def update_folder_file_content(playbook_id, file_path, content, user_id=None):
+        """
+        Update content of a specific file within folder playbook
+        
+        Args:
+            playbook_id: Playbook ID
+            file_path: Relative path to file within playbook folder
+            content: New content
+            user_id: ID of user updating the file
+        
+        Returns:
+            Success status
+        
+        Raises:
+            ValueError: If validation fails
+        """
+        import yaml
+        
+        playbook = Playbook.query.get(playbook_id)
+        if not playbook:
+            raise ValueError(f"Playbook with ID {playbook_id} not found")
+        
+        if not playbook.is_folder:
+            raise ValueError("Playbook is not a folder")
+        
+        # Sanitize path
+        try:
+            safe_path = sanitize_path(file_path)
+        except FileManagerError as e:
+            raise ValueError(str(e))
+        
+        full_path = os.path.join(playbook.file_path, safe_path)
+        
+        if not os.path.exists(full_path):
+            raise ValueError(f"File not found: {file_path}")
+        
+        # Validate YAML if it's a YAML file
+        if file_path.endswith(('.yml', '.yaml')):
+            try:
+                yaml.safe_load(content)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Invalid YAML syntax: {str(e)}")
+        
+        # Read old content for audit
+        success, old_content, _ = read_file_content(full_path)
+        
+        # Write new content
+        success, error = write_file_content(full_path, content)
+        if not success:
+            raise ValueError(error)
+        
+        # Update playbook metadata
+        playbook.updated_at = db.func.now()
+        db.session.commit()
+        
+        # Create audit logs
+        if user_id:
+            PlaybookService._create_audit_log(
+                user_id=user_id,
+                action='UPDATE_CONTENT',
+                resource_id=playbook_id,
+                details=f"Updated file '{file_path}' in playbook '{playbook.name}'"
+            )
+            
+            PlaybookService._create_playbook_audit_log(
+                playbook_id=playbook.id,
+                playbook_name=playbook.name,
+                user_id=user_id,
+                action='updated',
+                old_content=old_content if success else None,
+                new_content=content,
+                changes_description=f'File "{file_path}" updated in playbook "{playbook.name}"'
+            )
+        
+        return True
+    
+    @staticmethod
+    def download_folder_as_zip(playbook_id):
+        """
+        Create ZIP file from folder playbook for download
+        
+        Args:
+            playbook_id: Playbook ID
+        
+        Returns:
+            Path to created ZIP file
+        
+        Raises:
+            ValueError: If playbook not found or not a folder
+        """
+        playbook = Playbook.query.get(playbook_id)
+        if not playbook:
+            raise ValueError(f"Playbook with ID {playbook_id} not found")
+        
+        if not playbook.is_folder:
+            raise ValueError("Playbook is not a folder")
+        
+        # Create temporary ZIP file
+        temp_zip_path = os.path.join(tempfile.gettempdir(), f"{secure_filename(playbook.name)}_{uuid.uuid4().hex[:8]}.zip")
+        
+        success, error = create_zip_from_folder(playbook.file_path, temp_zip_path)
+        if not success:
+            raise ValueError(error)
+        
+        return temp_zip_path
     
     @staticmethod
     def get_playbook(playbook_id):
@@ -285,12 +593,18 @@ class PlaybookService:
             JobLog.query.filter_by(job_id=job.id).delete()
             db.session.delete(job)
         
-        # Delete file
+        # Delete file or folder
         if os.path.exists(file_path):
             try:
-                os.remove(file_path)
+                if playbook.is_folder:
+                    # Delete entire folder for folder playbooks
+                    import shutil
+                    shutil.rmtree(file_path)
+                else:
+                    # Delete single file
+                    os.remove(file_path)
             except Exception as e:
-                raise ValueError(f"Failed to delete playbook file: {str(e)}")
+                raise ValueError(f"Failed to delete playbook {'folder' if playbook.is_folder else 'file'}: {str(e)}")
         
         # Delete the playbook
         db.session.delete(playbook)

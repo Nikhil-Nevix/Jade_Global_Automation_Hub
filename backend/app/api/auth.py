@@ -12,7 +12,7 @@ from app.schemas import (
     user_create_schema, user_schema, error_schema
 )
 
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 
 @auth_bp.route('/login', methods=['POST', 'OPTIONS'])

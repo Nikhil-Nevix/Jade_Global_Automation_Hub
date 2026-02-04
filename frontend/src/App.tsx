@@ -19,6 +19,8 @@ import { JobsPage } from './pages/JobsPage/JobsPage';
 import { JobDetailsPage } from './pages/JobDetailsPage/JobDetailsPage';
 import { UsersPage } from './pages/UsersPage/UsersPage';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
+import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -153,6 +155,26 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <UsersPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <NotificationsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications/preferences"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <NotificationPreferencesPage />
               </MainLayout>
             </ProtectedRoute>
           }

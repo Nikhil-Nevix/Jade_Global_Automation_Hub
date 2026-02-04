@@ -36,6 +36,8 @@ class User(db.Model):
     jobs = db.relationship('Job', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
     tickets = db.relationship('Ticket', back_populates='created_by_user', lazy='dynamic', cascade='all, delete-orphan')
     audit_logs = db.relationship('AuditLog', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
+    notifications = db.relationship('Notification', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
+    notification_preferences = db.relationship('NotificationPreference', back_populates='user', lazy='dynamic', cascade='all, delete-orphan')
     
     def set_password(self, password):
         """Hash and set password"""
@@ -68,6 +70,7 @@ class Server(db.Model):
     ssh_port = db.Column(db.Integer, default=22, nullable=False)
     ssh_user = db.Column(db.String(50), nullable=False, default='root')
     ssh_key_path = db.Column(db.String(500), nullable=True)  # Path to private key
+    tags = db.Column(db.JSON, nullable=True)  # Server tags for grouping (e.g., ["production", "web-server"])
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     cpu_usage = db.Column(db.Float, nullable=True, default=0.0)  # CPU usage percentage (0-100)
     memory_usage = db.Column(db.Float, nullable=True, default=0.0)  # Memory usage percentage (0-100)
@@ -90,7 +93,12 @@ class Playbook(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), unique=True, nullable=False, index=True)
     description = db.Column(db.Text, nullable=True)
-    file_path = db.Column(db.String(500), nullable=False)  # Linux filesystem path
+    file_path = db.Column(db.String(500), nullable=False)  # Linux filesystem path (file or folder)
+    is_folder = db.Column(db.Boolean, default=False, nullable=False)  # TRUE for folder structure, FALSE for single file
+    main_playbook_file = db.Column(db.String(255), nullable=True)  # Relative path to main playbook within folder
+    file_structure = db.Column(db.JSON, nullable=True)  # JSON tree of all files in folder
+    file_count = db.Column(db.Integer, default=1, nullable=False)  # Total files in playbook
+    total_size_kb = db.Column(db.Integer, default=0, nullable=False)  # Total size in KB
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -107,6 +115,9 @@ class Job(db.Model):
     __tablename__ = 'jobs'
     
     id = db.Column(db.Integer, primary_key=True)
+    parent_job_id = db.Column(db.Integer, db.ForeignKey('jobs.id', ondelete='CASCADE'), nullable=True, index=True)  # Parent batch job
+    is_batch_job = db.Column(db.Boolean, default=False, nullable=False, index=True)  # True for parent jobs
+    batch_config = db.Column(db.JSON, nullable=True)  # Batch settings: {concurrent_limit, stop_on_failure}
     job_id = db.Column(db.String(36), unique=True, nullable=False, index=True)  # UUID
     playbook_id = db.Column(db.Integer, db.ForeignKey('playbooks.id'), nullable=False, index=True)
     server_id = db.Column(db.Integer, db.ForeignKey('servers.id'), nullable=False, index=True)
@@ -130,6 +141,9 @@ class Job(db.Model):
     user = db.relationship('User', back_populates='jobs')
     logs = db.relationship('JobLog', back_populates='job', lazy='dynamic', cascade='all, delete-orphan')
     tickets = db.relationship('Ticket', back_populates='job', lazy='dynamic', cascade='all, delete-orphan')
+    # Parent-child batch job relationships
+    child_jobs = db.relationship('Job', back_populates='parent', lazy='dynamic', cascade='all, delete-orphan', foreign_keys=[parent_job_id])
+    parent = db.relationship('Job', back_populates='child_jobs', remote_side=[id], foreign_keys=[parent_job_id])
     
     __table_args__ = (
         Index('idx_job_status_created', 'status', 'created_at'),
@@ -288,3 +302,90 @@ class PlaybookAuditLog(db.Model):
 def receive_before_update(mapper, connection, target):
     """Automatically update updated_at timestamp"""
     target.updated_at = datetime.utcnow()
+
+
+class Notification(db.Model):
+    """Notification model for user notifications"""
+    __tablename__ = 'notifications'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    severity = db.Column(db.Enum('info', 'warning', 'error', 'critical', name='notification_severity'), default='info', nullable=False)
+    event_type = db.Column(db.String(100), nullable=False, index=True)  # job_success, job_failure, etc.
+    related_entity_type = db.Column(db.String(50), nullable=True)  # job, server, user, playbook, system
+    related_entity_id = db.Column(db.Integer, nullable=True)
+    is_read = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+    channels_sent = db.Column(db.JSON, nullable=True)  # ["in_app", "email", "browser_push"]
+    extra_data = db.Column('metadata', db.JSON, nullable=True)  # Additional context (renamed from metadata)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=True)  # Auto-dismiss timestamp
+    
+    # Relationships
+    user = db.relationship('User', back_populates='notifications')
+    
+    __table_args__ = (
+        Index('idx_user_notifications', 'user_id', 'created_at'),
+        Index('idx_unread_notifications', 'user_id', 'is_read'),
+    )
+    
+    def mark_as_read(self):
+        """Mark notification as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = datetime.utcnow()
+    
+    def to_dict(self):
+        """Convert notification to dictionary"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'title': self.title,
+            'message': self.message,
+            'severity': self.severity,
+            'event_type': self.event_type,
+            'related_entity_type': self.related_entity_type,
+            'related_entity_id': self.related_entity_id,
+            'is_read': self.is_read,
+            'read_at': self.read_at.isoformat() if self.read_at else None,
+            'channels_sent': self.channels_sent or [],
+            'metadata': self.extra_data or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None
+        }
+
+
+class NotificationPreference(db.Model):
+    """User notification preferences per event type"""
+    __tablename__ = 'notification_preferences'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    event_type = db.Column(db.String(100), nullable=False)
+    in_app_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    email_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    browser_push_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    user = db.relationship('User', back_populates='notification_preferences')
+    
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'event_type', name='unique_user_event'),
+    )
+    
+    def to_dict(self):
+        """Convert preference to dictionary"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'event_type': self.event_type,
+            'in_app_enabled': self.in_app_enabled,
+            'email_enabled': self.email_enabled,
+            'browser_push_enabled': self.browser_push_enabled,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }

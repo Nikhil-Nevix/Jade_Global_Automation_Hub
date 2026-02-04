@@ -45,7 +45,7 @@ export interface Server {
   ssh_port: number;
   ssh_user: string;
   ssh_key_path?: string;
-  tags?: Record<string, any>;
+  tags?: string[];  // Array of tag strings like ["production", "web-server"]
   environment?: 'dev' | 'staging' | 'production';
   description?: string;
   is_active: boolean;
@@ -65,7 +65,7 @@ export interface ServerCreateRequest {
   ssh_port?: number;
   ssh_user: string;
   ssh_key_path?: string;
-  tags?: Record<string, any>;
+  tags?: string[];
   environment?: string;
   description?: string;
 }
@@ -78,7 +78,7 @@ export interface ServerUpdateRequest {
   ssh_port?: number;
   ssh_user?: string;
   ssh_key_path?: string;
-  tags?: Record<string, any>;
+  tags?: string[];
   environment?: string;
   description?: string;
   is_active?: boolean;
@@ -86,11 +86,25 @@ export interface ServerUpdateRequest {
 
 // ===== Playbook Types =====
 
+export interface FileTreeNode {
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  size?: number;
+  extension?: string;
+  children?: FileTreeNode[];
+}
+
 export interface Playbook {
   id: number;
   name: string;
   description?: string;
   file_path: string;
+  is_folder: boolean;
+  main_playbook_file?: string;
+  file_structure?: FileTreeNode;
+  file_count: number;
+  total_size_kb: number;
   file_hash: string;
   tags?: Record<string, any>;
   variables?: Record<string, any>;
@@ -105,6 +119,13 @@ export interface PlaybookUploadRequest {
   description?: string;
   tags?: Record<string, any>;
   variables?: Record<string, any>;
+}
+
+export interface FolderPlaybookUploadRequest {
+  file: File;  // ZIP file
+  name: string;
+  main_playbook_file: string;
+  description?: string;
 }
 
 export type PlaybookAction = 'created' | 'updated' | 'deleted' | 'uploaded' | 'replaced';
@@ -138,6 +159,9 @@ export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelle
 export interface Job {
   id: number;
   job_id: string;
+  parent_job_id?: number;
+  is_batch_job: boolean;
+  batch_config?: BatchConfig;
   playbook_id: number;
   server_id: number;
   user_id: number;
@@ -148,6 +172,7 @@ export interface Job {
   started_at?: string;
   completed_at?: string;
   created_at: string;
+  child_count?: number;
   playbook?: {
     id: number;
     name: string;
@@ -161,12 +186,56 @@ export interface Job {
     id: number;
     username: string;
   };
+  parent?: {
+    id: number;
+    job_id: string;
+    is_batch_job: boolean;
+  };
 }
 
 export interface JobCreateRequest {
   playbook_id: number;
   server_id: number;
   extra_vars?: Record<string, any>;
+}
+
+// ===== Batch Job Types =====
+
+export type ExecutionStrategy = 'parallel' | 'sequential';
+
+export interface BatchConfig {
+  concurrent_limit: number;
+  stop_on_failure: boolean;
+  execution_strategy: ExecutionStrategy;
+  total_servers: number;
+  server_ids: number[];
+}
+
+export interface BatchJobCreateRequest {
+  playbook_id: number;
+  server_ids: number[];
+  extra_vars?: Record<string, any>;
+  concurrent_limit?: number;  // Default: 5
+  stop_on_failure?: boolean;  // Default: false
+  execution_strategy?: ExecutionStrategy;  // Default: 'parallel'
+}
+
+export interface BatchJobResponse {
+  id: number;
+  job_id: string;
+  is_batch_job: boolean;
+  batch_config: BatchConfig;
+  status: JobStatus;
+  playbook_id: number;
+  total_servers: number;
+  created_at: string;
+  message: string;
+}
+
+export interface ChildJobsResponse {
+  parent_job_id: number;
+  total_children: number;
+  children: Job[];
 }
 
 export interface JobLog {
@@ -273,4 +342,67 @@ export interface PlaybookFilters {
   search?: string;
   page?: number;
   per_page?: number;
+}
+
+// ===== Notification Types =====
+
+export type NotificationSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export type NotificationEventType = 
+  | 'job_success'
+  | 'job_failure'
+  | 'batch_complete'
+  | 'server_failure'
+  | 'high_cpu'
+  | 'user_change'
+  | 'playbook_update'
+  | 'system_alert';
+
+export interface Notification {
+  id: number;
+  user_id: number;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  event_type: NotificationEventType;
+  related_entity_type?: string;
+  related_entity_id?: number;
+  is_read: boolean;
+  read_at: string | null;
+  channels_sent: string[];
+  metadata: Record<string, any>;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface NotificationPreference {
+  id: number;
+  user_id: number;
+  event_type: NotificationEventType;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  browser_push_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationListResponse {
+  notifications: Notification[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface NotificationPreferencesResponse {
+  preferences: NotificationPreference[];
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
+export interface SSENotificationEvent {
+  type: 'connected' | 'notification';
+  message?: string;
+  data?: Notification;
 }

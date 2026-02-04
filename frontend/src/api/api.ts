@@ -20,10 +20,18 @@ import type {
   JobFilters,
   JobLogsResponse,
   JobStatistics,
+  BatchJobCreateRequest,
+  BatchJobResponse,
+  ChildJobsResponse,
   Ticket,
   TicketCreateRequest,
   PaginatedResponse,
   HealthResponse,
+  Notification,
+  NotificationPreference,
+  NotificationListResponse,
+  NotificationPreferencesResponse,
+  UnreadCountResponse,
 } from '../types';
 
 // Base API configuration
@@ -235,6 +243,66 @@ export const playbooksApi = {
     return response.data;
   },
 
+  uploadFolder: async (file: File, name: string, mainPlaybookFile: string, description?: string): Promise<Playbook> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    formData.append('main_playbook_file', mainPlaybookFile);
+    if (description) {
+      formData.append('description', description);
+    }
+
+    const response = await axiosInstance.post<Playbook>('/playbooks/upload-folder', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  previewZip: async (file: File): Promise<{ yaml_files: string[]; suggested_main: string; total_files: number }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axiosInstance.post<{ yaml_files: string[]; suggested_main: string; total_files: number }>(
+      '/playbooks/preview-zip',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
+  getFolderFiles: async (id: number): Promise<{ files: string[] }> => {
+    const response = await axiosInstance.get<{ files: string[] }>(`/playbooks/${id}/files`);
+    return response.data;
+  },
+
+  getFolderFileContent: async (id: number, filePath: string): Promise<{ content: string; file_path: string }> => {
+    const response = await axiosInstance.get<{ content: string; file_path: string }>(
+      `/playbooks/${id}/files/${filePath}`
+    );
+    return response.data;
+  },
+
+  updateFolderFileContent: async (id: number, filePath: string, content: string): Promise<{ message: string }> => {
+    const response = await axiosInstance.put<{ message: string }>(
+      `/playbooks/${id}/files/${filePath}`,
+      { content }
+    );
+    return response.data;
+  },
+
+  downloadFolder: async (id: number): Promise<Blob> => {
+    const response = await axiosInstance.get(`/playbooks/${id}/download`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
   update: async (
     id: number,
     data: { description?: string; tags?: Record<string, any>; variables?: Record<string, any> }
@@ -289,6 +357,60 @@ export const jobsApi = {
 
   getStatistics: async (): Promise<JobStatistics> => {
     const response = await axiosInstance.get<JobStatistics>('/jobs/stats');
+    return response.data;
+  },
+
+  // Analytics methods
+  getSuccessRateTrends: async (params: {
+    time_range?: string;
+    start_date?: string;
+    end_date?: string;
+    granularity?: string;
+  }): Promise<any> => {
+    const response = await axiosInstance.get('/jobs/analytics/success-rate-trends', { params });
+    return response.data;
+  },
+
+  getExecutionTimeAnalytics: async (params: {
+    time_range?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any> => {
+    const response = await axiosInstance.get('/jobs/analytics/execution-time', { params });
+    return response.data;
+  },
+
+  getFailureAnalysis: async (params: {
+    time_range?: string;
+    start_date?: string;
+    end_date?: string;
+    group_by?: string;
+  }): Promise<any> => {
+    const response = await axiosInstance.get('/jobs/analytics/failure-analysis', { params });
+    return response.data;
+  },
+
+  exportAnalytics: async (params: {
+    format: 'pdf' | 'csv';
+    time_range?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<Blob> => {
+    const response = await axiosInstance.get('/jobs/analytics/export', {
+      params,
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // Batch job methods
+  createBatch: async (data: BatchJobCreateRequest): Promise<BatchJobResponse> => {
+    const response = await axiosInstance.post<BatchJobResponse>('/jobs/batch', data);
+    return response.data;
+  },
+
+  getChildJobs: async (parentJobId: number): Promise<ChildJobsResponse> => {
+    const response = await axiosInstance.get<ChildJobsResponse>(`/jobs/${parentJobId}/children`);
     return response.data;
   },
 };
@@ -347,6 +469,58 @@ export const usersApi = {
 
   delete: async (id: number): Promise<void> => {
     await axiosInstance.delete(`/users/${id}`);
+  },
+};
+
+// ===== Notifications API =====
+
+export const notificationsApi = {
+  list: async (params?: { unread_only?: boolean; limit?: number; offset?: number }): Promise<NotificationListResponse> => {
+    const response = await axiosInstance.get<NotificationListResponse>('/notifications', { params });
+    return response.data;
+  },
+
+  getUnreadCount: async (): Promise<number> => {
+    const response = await axiosInstance.get<UnreadCountResponse>('/notifications/unread-count');
+    return response.data.count;
+  },
+
+  markAsRead: async (id: number): Promise<void> => {
+    await axiosInstance.put(`/notifications/${id}/read`);
+  },
+
+  markAllAsRead: async (): Promise<void> => {
+    await axiosInstance.put('/notifications/mark-all-read');
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await axiosInstance.delete(`/notifications/${id}`);
+  },
+
+  deleteAllRead: async (): Promise<void> => {
+    await axiosInstance.delete('/notifications/delete-all-read');
+  },
+
+  getPreferences: async (): Promise<NotificationPreferencesResponse> => {
+    const response = await axiosInstance.get<NotificationPreferencesResponse>('/notifications/preferences');
+    return response.data;
+  },
+
+  updatePreference: async (
+    eventType: string,
+    data: { in_app_enabled?: boolean; email_enabled?: boolean; browser_push_enabled?: boolean }
+  ): Promise<NotificationPreference> => {
+    const response = await axiosInstance.put<{ preference: NotificationPreference }>(
+      `/notifications/preferences/${eventType}`,
+      data
+    );
+    return response.data.preference;
+  },
+
+  // SSE stream endpoint URL (not using axios)
+  getStreamUrl: (): string => {
+    const token = localStorage.getItem('access_token');
+    return `${API_BASE_URL}/notifications/stream?token=${token}`;
   },
 };
 

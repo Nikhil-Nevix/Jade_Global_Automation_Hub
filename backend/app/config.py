@@ -53,7 +53,7 @@ class Config:
     PASSWORD_MIN_LENGTH = 8
     
     # CORS Configuration
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://192.168.10.200:5173,http://192.168.56.144:5173').split(',')
     CORS_SUPPORTS_CREDENTIALS = True
     
     # Pagination

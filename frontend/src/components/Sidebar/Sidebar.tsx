@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   X,
   History,
+  Bell,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -62,6 +63,12 @@ const navItems: NavItem[] = [
     path: '/users',
     icon: Users,
     roles: ['super_admin', 'admin'],
+  },
+  {
+    name: 'Notifications',
+    path: '/notifications',
+    icon: Bell,
+    roles: ['super_admin', 'admin', 'user'],
   },
   {
     name: 'Settings',

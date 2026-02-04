@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, User, Activity, Code2, Eye, EyeOff } from 'lucide-react';
 import type { PlaybookAuditLog } from '../../types';
 import { useUIStore } from '../../store/uiStore';
+import { getUserTimezone } from '../../utils/timezone';
 import { playbooksApi } from '../../api/api';
 
 export const PlaybookAuditPage: React.FC = () => {
@@ -172,7 +173,8 @@ export const PlaybookAuditPage: React.FC = () => {
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Clock className="h-4 w-4 text-gray-500" />
                         <span>
-                          {new Date(log.created_at).toLocaleString('en-US', {
+                          {new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric',
@@ -180,7 +182,7 @@ export const PlaybookAuditPage: React.FC = () => {
                             minute: '2-digit',
                             second: '2-digit',
                             hour12: true
-                          })}
+                          }).format(new Date(log.created_at))}
                         </span>
                       </div>
                     </div>

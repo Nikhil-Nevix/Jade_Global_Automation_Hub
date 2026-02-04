@@ -10,6 +10,7 @@ from flask import Flask, jsonify
 from app.config import get_config
 from app.extensions import init_extensions, db, jwt
 from app.api import auth_bp, servers_bp, playbooks_bp, jobs_bp, users_bp
+from app.api.notifications import notifications_bp
 
 # Load environment variables from .env file
 load_dotenv()
@@ -93,6 +94,7 @@ def register_blueprints(app):
     app.register_blueprint(playbooks_bp)
     app.register_blueprint(jobs_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(notifications_bp)
 
 
 def register_error_handlers(app):

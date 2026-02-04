@@ -5,22 +5,32 @@
 
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Server, FileCode, Clock, CheckCircle, XCircle, AlertCircle, Plus } from 'lucide-react';
+import { 
+  Server, FileCode, Clock, CheckCircle, XCircle, AlertCircle, Plus, 
+  Download, RefreshCw, Calendar, TrendingUp, BarChart3, AlertTriangle
+} from 'lucide-react';
 import { jobsApi, serversApi, playbooksApi } from '../../api/api';
 import { mockApi } from '../../api/mockApi';
 import type { JobStatistics, Job, Server as ServerType } from '../../types';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
 import { DynamicChart, ChartType, DataMetric } from '../../components/DynamicChart/DynamicChart';
+import { getUserTimezone } from '../../utils/timezone';
 
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
-export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all';
+export type TimeRange = '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom';
 
 interface ChartConfig {
   id: string;
   metric: DataMetric;
   chartType: ChartType;
   timeRange: TimeRange;
+}
+
+interface AnalyticsData {
+  successTrends: any;
+  executionTimes: any;
+  failureAnalysis: any;
 }
 
 export const Dashboard: React.FC = () => {
@@ -37,11 +47,33 @@ export const Dashboard: React.FC = () => {
     { id: '1', metric: 'job-status', chartType: 'bar', timeRange: 'all' },
     { id: '2', metric: 'job-success-rate', chartType: 'pie', timeRange: 'all' },
   ]);
-  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>('all');
+  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>('30days');
+  
+  // Enhanced analytics state
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('30days');
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
+  const [exportingCSV, setExportingCSV] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
+    loadAnalyticsData();
   }, []);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const interval = setInterval(() => {
+      loadDashboardData();
+      loadAnalyticsData();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [autoRefresh, selectedTimeRange]);
 
   const loadDashboardData = async () => {
     try {
@@ -75,6 +107,112 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const loadAnalyticsData = async () => {
+    if (isDemoMode) return; // Skip analytics in demo mode
+    
+    try {
+      setAnalyticsLoading(true);
+      
+      const params = {
+        time_range: selectedTimeRange,
+        ...(selectedTimeRange === 'custom' && customDateRange.start && customDateRange.end
+          ? { start_date: customDateRange.start, end_date: customDateRange.end }
+          : {}),
+      };
+      
+      const [successTrends, executionTimes, failureAnalysis] = await Promise.all([
+        jobsApi.getSuccessRateTrends({ ...params, granularity: 'daily' }),
+        jobsApi.getExecutionTimeAnalytics(params),
+        jobsApi.getFailureAnalysis({ ...params, group_by: 'both' }),
+      ]);
+      
+      setAnalyticsData({
+        successTrends,
+        executionTimes,
+        failureAnalysis,
+      });
+    } catch (error) {
+      console.error('Failed to load analytics data:', error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const handleAnalyticsTimeRangeChange = (range: TimeRange) => {
+    setSelectedTimeRange(range);
+    if (range !== 'custom') {
+      setCustomDateRange({ start: '', end: '' });
+      // Reload analytics with new time range
+      setTimeout(() => loadAnalyticsData(), 100);
+    }
+  };
+
+  const handleCustomDateChange = () => {
+    if (customDateRange.start && customDateRange.end) {
+      loadAnalyticsData();
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      setExportingPDF(true);
+      const params = {
+        format: 'pdf' as const,
+        time_range: selectedTimeRange,
+        ...(selectedTimeRange === 'custom' && customDateRange.start && customDateRange.end
+          ? { start_date: customDateRange.start, end_date: customDateRange.end }
+          : {}),
+      };
+      
+      const blob = await jobsApi.exportAnalytics(params);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setExportingPDF(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      setExportingCSV(true);
+      const params = {
+        format: 'csv' as const,
+        time_range: selectedTimeRange,
+        ...(selectedTimeRange === 'custom' && customDateRange.start && customDateRange.end
+          ? { start_date: customDateRange.start, end_date: customDateRange.end }
+          : {}),
+      };
+      
+      const blob = await jobsApi.exportAnalytics(params);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics_report_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to export CSV:', error);
+      alert('Failed to export CSV. Please try again.');
+    } finally {
+      setExportingCSV(false);
+    }
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+  };
+
   // Helper function to filter jobs by time range
   const filterJobsByTimeRange = (jobs: Job[], timeRange: TimeRange): Job[] => {
     if (timeRange === 'all') return jobs;
@@ -101,8 +239,8 @@ export const Dashboard: React.FC = () => {
     }
 
     return jobs.filter((job) => {
-      // Filter by completion date (ended_at) or creation date if not completed
-      const jobDate = job.ended_at ? new Date(job.ended_at) : new Date(job.created_at);
+      // Filter by completion date (completed_at) or creation date if not completed
+      const jobDate = job.completed_at ? new Date(job.completed_at) : new Date(job.created_at);
       return jobDate >= cutoffDate;
     });
   };
@@ -213,8 +351,6 @@ export const Dashboard: React.FC = () => {
   const handleApplyToAllCharts = () => {
     setCharts(charts.map((chart) => ({ ...chart, timeRange: globalTimeRange })));
   };
-
-  const chartData = prepareChartData();
 
   if (loading) {
     return (
@@ -345,13 +481,96 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Analytics Charts Section */}
-      <div className="space-y-6">
-        {/* Section Header with Time Range Filter and Add Chart Button */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Analytics & Insights</h2>
+      {/* Advanced Analytics & Insights - Unified Section */}
+      <div className="bg-gradient-to-br from-white to-gray-50 border border-primary-200 shadow-glow rounded-lg p-6">
+        {/* Analytics Header with Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            {/* Global Time Range Filter */}
+            <TrendingUp className="h-6 w-6 text-primary-600" />
+            <h3 className="text-xl font-semibold text-gray-900">Advanced Analytics & Insights</h3>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Time Range Filter */}
+            {!isDemoMode && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <select
+                    value={selectedTimeRange}
+                    onChange={(e) => handleAnalyticsTimeRangeChange(e.target.value as TimeRange)}
+                    className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                  >
+                    <option value="7days">Last 7 days</option>
+                    <option value="30days">Last 30 days</option>
+                    <option value="3months">Last 3 months</option>
+                    <option value="custom">Custom Range</option>
+                  </select>
+                </div>
+
+                {/* Custom Date Range Inputs */}
+                {selectedTimeRange === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customDateRange.start}
+                      onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
+                      className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                    />
+                    <span className="text-gray-500">to</span>
+                    <input
+                      type="date"
+                      value={customDateRange.end}
+                      onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
+                      className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                    />
+                    <button
+                      onClick={handleCustomDateChange}
+                      className="px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-sm"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+
+                {/* Auto Refresh Toggle */}
+                <button
+                  onClick={toggleAutoRefresh}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${
+                    autoRefresh
+                      ? 'bg-success-100 text-success-700 hover:bg-success-200'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  title={autoRefresh ? 'Auto-refresh enabled' : 'Auto-refresh disabled'}
+                >
+                  <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin-slow' : ''}`} />
+                  Auto
+                </button>
+
+                {/* Export Buttons */}
+                <button
+                  onClick={handleExportPDF}
+                  disabled={exportingPDF}
+                  className="flex items-center gap-2 px-3 py-2 bg-error-500 text-white rounded-lg hover:bg-error-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download className="h-4 w-4" />
+                  {exportingPDF ? 'Exporting...' : 'PDF'}
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  disabled={exportingCSV}
+                  className="flex items-center gap-2 px-3 py-2 bg-success-500 text-white rounded-lg hover:bg-success-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download className="h-4 w-4" />
+                  {exportingCSV ? 'Exporting...' : 'CSV'}
+                </button>
+
+                <div className="w-px h-6 bg-gray-300"></div>
+              </>
+            )}
+
+            {/* Global Time Range Filter for Charts */}
             <select
               value={globalTimeRange}
               onChange={(e) => setGlobalTimeRange(e.target.value as TimeRange)}
@@ -385,36 +604,200 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {charts.map((chart) => (
-            <DynamicChart
-              key={chart.id}
-              chartId={chart.id}
-              initialMetric={chart.metric}
-              initialChartType={chart.chartType}
-              initialTimeRange={chart.timeRange}
-              data={prepareChartData(chart.timeRange)}
-              onRemove={handleRemoveChart}
-              onMetricChange={handleMetricChange}
-              onChartTypeChange={handleChartTypeChange}
-              onTimeRangeChange={handleTimeRangeChange}
-            />
-          ))}
-        </div>
+        {/* Advanced Analytics Cards - Only shown when NOT in demo mode */}
+        {!isDemoMode && (
+          <>
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-12 mb-6">
+                <div className="text-gray-500">Loading analytics data...</div>
+              </div>
+            ) : analyticsData ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                {/* Success Rate Trends */}
+                <div className="bg-white rounded-lg p-5 border border-gray-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <TrendingUp className="h-5 w-5 text-success-600" />
+                    <h4 className="font-semibold text-gray-900">Success Rate Trends</h4>
+                  </div>
+                  {analyticsData.successTrends?.trends?.length > 0 ? (
+                    <div className="space-y-2">
+                      {analyticsData.successTrends.trends.slice(0, 7).map((trend: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                          <span className="text-sm text-gray-600">{trend.period}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-gray-900">{trend.total_jobs} jobs</span>
+                            <span className={`text-sm font-bold ${
+                              trend.success_rate >= 80 ? 'text-success-600' : 
+                              trend.success_rate >= 60 ? 'text-warning-600' : 'text-error-600'
+                            }`}>
+                              {trend.success_rate}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 py-4">No data available for this period</p>
+                  )}
+                </div>
 
-        {charts.length === 0 && (
-          <div className="bg-white border border-primary-200 shadow-glow rounded-lg shadow-lg p-12 text-center">
-            <p className="text-gray-500 mb-4">No charts added yet</p>
-            <button
-              onClick={handleAddChart}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors shadow-sm"
-            >
-              <Plus className="h-4 w-4" />
-              Add Your First Chart
-            </button>
-          </div>
+                {/* Average Execution Time */}
+                <div className="bg-white rounded-lg p-5 border border-gray-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="h-5 w-5 text-info-600" />
+                    <h4 className="font-semibold text-gray-900">Avg Execution Time by Playbook</h4>
+                  </div>
+                  {analyticsData.executionTimes?.playbooks?.length > 0 ? (
+                    <div className="space-y-2">
+                      {analyticsData.executionTimes.playbooks.slice(0, 5).map((playbook: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                          <span className="text-sm text-gray-600 truncate max-w-[200px]" title={playbook.playbook_name}>
+                            {playbook.playbook_name}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500">{playbook.total_executions} runs</span>
+                            <span className="text-sm font-medium text-info-600">
+                              {playbook.avg_duration_formatted}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 py-4">No execution data available</p>
+                  )}
+                </div>
+
+                {/* Failure Analysis - By Playbook */}
+                <div className="bg-white rounded-lg p-5 border border-gray-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <AlertTriangle className="h-5 w-5 text-error-600" />
+                    <h4 className="font-semibold text-gray-900">Top Failing Playbooks</h4>
+                  </div>
+                  {analyticsData.failureAnalysis?.by_playbook?.length > 0 ? (
+                    <div className="space-y-2">
+                      {analyticsData.failureAnalysis.by_playbook.slice(0, 5).map((item: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                          <span className="text-sm text-gray-600 truncate max-w-[200px]" title={item.playbook_name}>
+                            {item.playbook_name}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500">{item.affected_servers} servers</span>
+                            <span className="text-sm font-bold text-error-600">
+                              {item.failure_count} failures
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-success-600 py-4">No failures in this period! 🎉</p>
+                  )}
+                </div>
+
+                {/* Failure Analysis - By Server */}
+                <div className="bg-white rounded-lg p-5 border border-gray-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Server className="h-5 w-5 text-error-600" />
+                    <h4 className="font-semibold text-gray-900">Top Failing Servers</h4>
+                  </div>
+                  {analyticsData.failureAnalysis?.by_server?.length > 0 ? (
+                    <div className="space-y-2">
+                      {analyticsData.failureAnalysis.by_server.slice(0, 5).map((item: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                          <span className="text-sm text-gray-600 truncate max-w-[200px]" title={item.server_hostname}>
+                            {item.server_hostname}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500">{item.affected_playbooks} playbooks</span>
+                            <span className="text-sm font-bold text-error-600">
+                              {item.failure_count} failures
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-success-600 py-4">No failures in this period! 🎉</p>
+                  )}
+                </div>
+
+                {/* Failure Summary */}
+                {analyticsData.failureAnalysis?.summary && (
+                  <div className="lg:col-span-2 bg-gradient-to-r from-error-50 to-warning-50 rounded-lg p-5 border border-error-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <BarChart3 className="h-5 w-5 text-error-600" />
+                      <h4 className="font-semibold text-gray-900">Failure Summary</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {analyticsData.failureAnalysis.summary.total_jobs}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">Total Jobs</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-error-600">
+                          {analyticsData.failureAnalysis.summary.total_failures}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">Total Failures</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-warning-600">
+                          {analyticsData.failureAnalysis.summary.failure_rate}%
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">Failure Rate</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500 mb-6">
+                No analytics data available. Click the refresh button or select a different time range.
+              </div>
+            )}
+
+            {/* Separator */}
+            <div className="border-t border-gray-200 my-6"></div>
+          </>
         )}
+
+        {/* Dynamic Charts Section */}
+        <div className="space-y-6">
+          <h4 className="text-lg font-semibold text-gray-900">Customizable Charts</h4>
+          
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {charts.map((chart) => (
+              <DynamicChart
+                key={chart.id}
+                chartId={chart.id}
+                initialMetric={chart.metric}
+                initialChartType={chart.chartType}
+                initialTimeRange={chart.timeRange}
+                data={prepareChartData(chart.timeRange)}
+                onRemove={handleRemoveChart}
+                onMetricChange={handleMetricChange}
+                onChartTypeChange={handleChartTypeChange}
+                onTimeRangeChange={handleTimeRangeChange}
+              />
+            ))}
+          </div>
+
+          {charts.length === 0 && (
+            <div className="bg-white border border-primary-200 rounded-lg p-12 text-center">
+              <p className="text-gray-500 mb-4">No charts added yet</p>
+              <button
+                onClick={handleAddChart}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors shadow-sm"
+              >
+                <Plus className="h-4 w-4" />
+                Add Your First Chart
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Recent jobs */}
@@ -469,14 +852,15 @@ export const Dashboard: React.FC = () => {
                       <StatusBadge status={job.status} />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {new Date(job.created_at).toLocaleString('en-US', {
+                      {new Intl.DateTimeFormat('en-US', {
+                        timeZone: getUserTimezone(),
                         month: 'numeric',
                         day: 'numeric',
                         year: 'numeric',
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true
-                      })}
+                      }).format(new Date(job.created_at))}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <Link

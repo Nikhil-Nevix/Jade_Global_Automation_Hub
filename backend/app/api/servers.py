@@ -12,7 +12,7 @@ from app.schemas import (
     server_update_schema, error_schema
 )
 
-servers_bp = Blueprint('servers', __name__, url_prefix='/servers')
+servers_bp = Blueprint('servers', __name__, url_prefix='/api/servers')
 
 
 @servers_bp.route('', methods=['GET'])

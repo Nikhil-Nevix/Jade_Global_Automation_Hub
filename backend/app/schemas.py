@@ -23,13 +23,13 @@ class UserCreateSchema(Schema):
     username = fields.Str(required=True, validate=validate.Length(min=3, max=80))
     email = fields.Email(required=True)
     password = fields.Str(required=True, validate=validate.Length(min=8), load_only=True)
-    role = fields.Str(required=True, validate=validate.OneOf(['admin', 'operator', 'viewer']))
+    role = fields.Str(required=True, validate=validate.OneOf(['super_admin', 'admin', 'user']))
 
 
 class UserUpdateSchema(Schema):
     """Schema for updating user details"""
     email = fields.Email()
-    role = fields.Str(validate=validate.OneOf(['admin', 'operator', 'viewer']))
+    role = fields.Str(validate=validate.OneOf(['super_admin', 'admin', 'user']))
     is_active = fields.Bool()
     password = fields.Str(validate=validate.Length(min=8), load_only=True)
 
@@ -67,6 +67,7 @@ class ServerCreateSchema(Schema):
     ssh_port = fields.Int(validate=validate.Range(min=1, max=65535))
     ssh_user = fields.Str(required=True, validate=validate.Length(max=50))
     ssh_key_path = fields.Str(validate=validate.Length(max=500))
+    tags = fields.List(fields.Str())
     is_active = fields.Bool()
 
 
@@ -78,6 +79,9 @@ class ServerUpdateSchema(Schema):
     os_version = fields.Str(validate=validate.Length(max=50))
     ssh_port = fields.Int(validate=validate.Range(min=1, max=65535))
     ssh_user = fields.Str(validate=validate.Length(max=50))
+    ssh_key_path = fields.Str(validate=validate.Length(max=500))
+    tags = fields.List(fields.Str())
+    is_active = fields.Bool()
     ssh_key_path = fields.Str(validate=validate.Length(max=500))
     is_active = fields.Bool()
 
@@ -121,11 +125,19 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
     playbook = fields.Nested(PlaybookSchema, only=('id', 'name'))
     server = fields.Nested(ServerSchema, only=('id', 'hostname', 'ip_address'))
     user = fields.Nested(UserSchema, only=('id', 'username'))
+    parent = fields.Nested('self', only=('id', 'job_id', 'is_batch_job'), dump_only=True)
+    child_count = fields.Method('get_child_count')
     
     class Meta:
         model = Job
         load_instance = True
-        dump_only = ('id', 'job_id', 'celery_task_id', 'created_at', 'started_at', 'completed_at')
+        dump_only = ('id', 'job_id', 'celery_task_id', 'created_at', 'started_at', 'completed_at', 'parent_job_id', 'is_batch_job', 'batch_config')
+    
+    def get_child_count(self, obj):
+        """Get count of child jobs for batch jobs"""
+        if obj.is_batch_job:
+            return obj.child_jobs.count()
+        return 0
 
 
 class JobCreateSchema(Schema):

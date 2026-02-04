@@ -9,6 +9,7 @@ import { Search, Eye, RefreshCw } from 'lucide-react';
 import { playbooksApi } from '../../api/api';
 import type { Playbook } from '../../types';
 import { useUIStore } from '../../store/uiStore';
+import { getUserTimezone } from '../../utils/timezone';
 
 export const PlaybookAuditLogsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -134,11 +135,12 @@ export const PlaybookAuditLogsPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div className="flex flex-col">
-                      <span>{new Date(playbook.created_at).toLocaleDateString('en-US', {
+                      <span>{new Intl.DateTimeFormat('en-US', {
+                        timeZone: getUserTimezone(),
                         year: 'numeric',
                         month: 'short',
                         day: 'numeric'
-                      })}</span>
+                      }).format(new Date(playbook.created_at))}</span>
                       <span className="text-xs text-gray-600">{new Date(playbook.created_at).toLocaleTimeString('en-US', {
                         hour: '2-digit',
                         minute: '2-digit',

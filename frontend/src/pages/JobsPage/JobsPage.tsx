@@ -4,12 +4,13 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Search, Filter, ArrowUpDown, RefreshCw, AlertTriangle, X, StopCircle } from 'lucide-react';
-import { jobsApi } from '../../api/api';
+import { Search, RefreshCw, AlertTriangle, X, ChevronDown, ChevronRight, Layers, Bug, Trash2, FileText, Server as ServerIcon } from 'lucide-react';
+import { jobsApi, serversApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { useNavigate } from 'react-router-dom';
-import type { Job } from '../../types';
+import { getUserTimezone } from '../../utils/timezone';
+import type { Job, Server } from '../../types';
 
 export const JobsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,16 +18,22 @@ export const JobsPage: React.FC = () => {
   const { addNotification } = useUIStore();
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [selectedServer, setSelectedServer] = useState<string>('all');
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [expandedBatchJobs, setExpandedBatchJobs] = useState<Set<number>>(new Set());
+  const [childJobsMap, setChildJobsMap] = useState<Record<number, Job[]>>({});
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   useEffect(() => {
     loadJobs();
+    loadServers();
   }, []);
 
   const loadJobs = async () => {
@@ -39,6 +46,15 @@ export const JobsPage: React.FC = () => {
       addNotification('error', 'Failed to load jobs');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadServers = async () => {
+    try {
+      const response = await serversApi.list({ per_page: 100 });
+      setServers(response.items);
+    } catch (error) {
+      console.error('Failed to load servers:', error);
     }
   };
 
@@ -92,6 +108,35 @@ export const JobsPage: React.FC = () => {
     addNotification('info', 'Continuing with high resource usage');
   };
 
+  const toggleBatchExpansion = async (jobId: number) => {
+    const newExpanded = new Set(expandedBatchJobs);
+    if (newExpanded.has(jobId)) {
+      newExpanded.delete(jobId);
+    } else {
+      newExpanded.add(jobId);
+      // Load child jobs if not already loaded
+      if (!childJobsMap[jobId]) {
+        try {
+          const response = await jobsApi.getChildJobs(jobId);
+          setChildJobsMap(prev => ({ ...prev, [jobId]: response.children }));
+        } catch (error) {
+          console.error('Failed to load child jobs:', error);
+          addNotification('error', 'Failed to load child jobs');
+        }
+      }
+    }
+    setExpandedBatchJobs(newExpanded);
+  };
+
+  const getBatchJobProgress = (childJobs?: Job[]) => {
+    if (!childJobs || childJobs.length === 0) return null;
+    const completed = childJobs.filter(j => j.status === 'success').length;
+    const failed = childJobs.filter(j => j.status === 'failed').length;
+    const running = childJobs.filter(j => j.status === 'running').length;
+    const total = childJobs.length;
+    return { completed, failed, running, total };
+  };
+
   const handleStopJob = async (job: Job, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent row click
     
@@ -116,7 +161,12 @@ export const JobsPage: React.FC = () => {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: getUserTimezone(),
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(date);
   };
 
   const getEstimatedFinish = (job: Job) => {
@@ -139,7 +189,10 @@ export const JobsPage: React.FC = () => {
       job.job_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (job.playbook_name && job.playbook_name.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = selectedStatus === 'all' || job.status === selectedStatus;
-    return matchesSearch && matchesStatus;
+    const matchesServer = selectedServer === 'all' || 
+      (job.server && job.server.id === parseInt(selectedServer)) ||
+      (job.batch_job_id && job.servers && job.servers.some(s => s.id === parseInt(selectedServer)));
+    return matchesSearch && matchesStatus && matchesServer;
   });
 
   if (loading) {
@@ -165,17 +218,39 @@ export const JobsPage: React.FC = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search jobs by ID, playbook, or user..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white text-gray-900 border border-primary-200 shadow-glow rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 placeholder-gray-400"
-          />
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search jobs by ID, playbook, or user..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white text-gray-900 border border-primary-200 shadow-glow rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 placeholder-gray-400"
+            />
+          </div>
+          
+          {/* Server Filter Dropdown */}
+          <div className="relative min-w-[200px]">
+            <ServerIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <select
+              value={selectedServer}
+              onChange={(e) => setSelectedServer(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white text-gray-900 border border-primary-200 shadow-glow rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none cursor-pointer"
+            >
+              <option value="all">All Servers</option>
+              {servers.map(server => (
+                <option key={server.id} value={server.id.toString()}>
+                  {server.hostname}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          </div>
         </div>
+        
+        {/* Status Filter Buttons */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSelectedStatus('all')}
@@ -273,39 +348,71 @@ export const JobsPage: React.FC = () => {
               filteredJobs.map((job) => {
                 const cpuUsage = getCpuUsage(job);
                 const isHighCpu = isHighCpuUsage(cpuUsage);
+                const isExpanded = expandedBatchJobs.has(job.id);
+                const childJobs = childJobsMap[job.id];
+                const progress = job.is_batch_job ? getBatchJobProgress(childJobs) : null;
                 
                 return (
-                  <tr key={job.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">▶</span>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {job.playbook?.name || 'Unknown Playbook'}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            #{job.job_id} • by {job.user?.username || 'admin'}
+                  <React.Fragment key={job.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {job.is_batch_job ? (
+                            <button
+                              onClick={() => toggleBatchExpansion(job.id)}
+                              className="text-primary-600 hover:text-primary-800"
+                            >
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          ) : (
+                            <span className="text-gray-600">▶</span>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium text-gray-900">
+                                {job.playbook?.name || 'Unknown Playbook'}
+                              </div>
+                              {job.is_batch_job && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+                                  <Layers className="h-3 w-3" />
+                                  Batch
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              #{job.job_id} • by {job.user?.username || 'admin'}
+                            </div>
+                            {progress && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {progress.completed}/{progress.total} completed
+                                {progress.failed > 0 && `, ${progress.failed} failed`}
+                                {progress.running > 0 && `, ${progress.running} running`}
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(job.status)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <span className="text-gray-600">📋</span>
-                        {job.server ? '1 Node' : '0 Nodes'}
-                      </div>
-                    </td>
+                      </td>
+                      <td className="px-6 py-4">
+                        {getStatusBadge(job.status)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <span className="text-gray-600">📋</span>
+                          {job.is_batch_job 
+                            ? `${childJobs?.length || 0} Nodes` 
+                            : job.server ? '1 Node' : '0 Nodes'
+                          }
+                        </div>
+                      </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
                         <div className="flex flex-col">
-                          <span>{new Date(job.started_at || job.created_at).toLocaleDateString('en-US', {
+                          <span>{new Intl.DateTimeFormat('en-US', {
+                            timeZone: getUserTimezone(),
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric'
-                          })}</span>
+                          }).format(new Date(job.started_at || job.created_at))}</span>
                           <span className="text-xs text-gray-600">{formatTime(job.started_at || job.created_at)}</span>
                         </div>
                         <div className="text-xs text-primary-600 mt-1">
@@ -313,31 +420,85 @@ export const JobsPage: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        {/* Delete button only for admins on non-cancelled jobs */}
-                        {isAdmin && job.status !== 'cancelled' && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {/* Delete button - available for all jobs */}
                           <button
                             onClick={(e) => handleStopJob(job, e)}
-                            className="flex items-center gap-1 text-red-600 hover:text-red-800 text-sm font-medium"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-full transition-colors"
                             title="Delete Job"
                           >
-                            <span>🗑️</span>
+                            <Trash2 className="h-3 w-3" />
                             Delete
                           </button>
-                        )}
-                        
-                        {/* Details button - always visible */}
-                        <button
-                          onClick={() => navigate(`/jobs/${job.id}`)}
-                          className="flex items-center gap-1 text-primary-600 hover:text-primary-800 text-sm font-medium"
-                        >
-                          <span>📄</span>
-                          Details
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                          
+                          {/* Debug button - only for failed jobs */}
+                          {job.status === 'failed' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDebugModal(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-warning-500 hover:bg-warning-600 rounded-full transition-colors"
+                              title="Debug Job"
+                            >
+                              <Bug className="h-3 w-3" />
+                              Debug
+                            </button>
+                          )}
+                          
+                          {/* Details button - always visible */}
+                          <button
+                            onClick={() => navigate(`/jobs/${job.id}`)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-full transition-colors"
+                            title="View Details"
+                          >
+                            <FileText className="h-3 w-3" />
+                            Details
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Child Jobs - Expandable Section */}
+                    {job.is_batch_job && isExpanded && childJobs && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-4 bg-gray-50">
+                          <div className="ml-10 space-y-2">
+                            <div className="text-sm font-medium text-gray-700 mb-3">Child Jobs:</div>
+                            {childJobs.map((childJob, index) => (
+                              <div
+                                key={childJob.id}
+                                className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow"
+                              >
+                                <div className="flex items-center gap-4 flex-1">
+                                  <div className="text-xs text-gray-500 w-8">#{index + 1}</div>
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {childJob.server?.hostname || 'Unknown Server'}
+                                    </div>
+                                    <div className="text-xs text-gray-600">
+                                      Job ID: {childJob.job_id}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    {childJob.server?.ip_address || 'N/A'}
+                                  </div>
+                                  <div>{getStatusBadge(childJob.status)}</div>
+                                  <button
+                                    onClick={() => navigate(`/jobs/${childJob.id}`)}
+                                    className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+                                  >
+                                    View Logs
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}
@@ -400,6 +561,42 @@ export const JobsPage: React.FC = () => {
                 className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-200 border border-gray-300 rounded-lg hover:bg-gray-300 transition-colors font-medium"
               >
                 Ignore & Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Modal */}
+      {showDebugModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Bug className="h-6 w-6 text-warning-600" />
+                <h3 className="text-xl font-semibold text-gray-900">Debug Feature</h3>
+              </div>
+              <button
+                onClick={() => setShowDebugModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-gray-700 text-center py-8">
+                Debug feature coming soon
+              </p>
+              <p className="text-sm text-gray-500 text-center">
+                This feature will help you analyze and troubleshoot failed job executions.
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowDebugModal(false)}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>

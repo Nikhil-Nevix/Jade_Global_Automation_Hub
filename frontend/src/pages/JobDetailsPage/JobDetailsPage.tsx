@@ -18,11 +18,13 @@ import {
   FileCode,
   Calendar,
   Activity,
-  Terminal
+  Terminal,
+  Bug
 } from 'lucide-react';
 import { jobsApi } from '../../api/api';
 import { useUIStore } from '../../store/uiStore';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
+import { formatJobDateTime, getUserTimezone } from '../../utils/timezone';
 import type { Job, JobLog } from '../../types';
 
 interface ParsedResult {
@@ -44,6 +46,7 @@ export const JobDetailsPage: React.FC = () => {
   const [showResults, setShowResults] = useState(false);
   const [showConsoleOutput, setShowConsoleOutput] = useState(false);
   const [parsedResults, setParsedResults] = useState<ParsedResult[]>([]);
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -180,6 +183,10 @@ export const JobDetailsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleDebug = () => {
+    setShowDebugModal(true);
+  };
+
   const handleRerun = async () => {
     if (!job || !confirm('Are you sure you want to re-run this job?')) {
       return;
@@ -214,6 +221,26 @@ export const JobDetailsPage: React.FC = () => {
       INFO: 'text-primary-600',
     };
     return colors[level as keyof typeof colors] || 'text-gray-600';
+  };
+
+  // Calculate duration (only when job has ended)
+  const calculateDuration = () => {
+    if (!job) return 'N/A';
+    
+    if (job.started_at && job.completed_at) {
+      // Job completed - show final duration (completed_at - started_at)
+      const totalSeconds = Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000);
+      
+      // Format as Min:Sec
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    } else if (job.started_at) {
+      // Job running - show "In progress"
+      return 'In progress';
+    }
+    
+    return 'N/A';
   };
 
   if (loading) {
@@ -320,11 +347,7 @@ export const JobDetailsPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Created</p>
               <p className="text-sm font-semibold text-gray-900 mt-2">
-                {new Date(job.created_at).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}
+                {formatJobDateTime(job.created_at)}
               </p>
             </div>
             <div className="p-3 bg-warning-100 rounded-lg">
@@ -345,17 +368,7 @@ export const JobDetailsPage: React.FC = () => {
               <span className="text-sm font-medium text-gray-600">Started At</span>
             </div>
             <p className="text-sm text-gray-900">
-              {job.started_at
-                ? new Date(job.started_at).toLocaleString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: true
-                  })
-                : 'Not started yet'}
+              {job.started_at ? formatJobDateTime(job.started_at) : 'Not started yet'}
             </p>
           </div>
 
@@ -366,17 +379,7 @@ export const JobDetailsPage: React.FC = () => {
               <span className="text-sm font-medium text-gray-600">Ended At</span>
             </div>
             <p className="text-sm text-gray-900">
-              {job.ended_at
-                ? new Date(job.ended_at).toLocaleString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: true
-                  })
-                : 'In progress'}
+              {job.completed_at ? formatJobDateTime(job.completed_at) : 'In progress'}
             </p>
           </div>
 
@@ -387,11 +390,7 @@ export const JobDetailsPage: React.FC = () => {
               <span className="text-sm font-medium text-gray-600">Duration</span>
             </div>
             <p className="text-sm text-gray-900">
-              {job.started_at && job.ended_at
-                ? `${Math.round((new Date(job.ended_at).getTime() - new Date(job.started_at).getTime()) / 1000)}s`
-                : job.started_at
-                ? 'Running...'
-                : 'N/A'}
+              {calculateDuration()}
             </p>
           </div>
         </div>
@@ -418,6 +417,16 @@ export const JobDetailsPage: React.FC = () => {
           {showConsoleOutput ? 'Hide Console Output' : 'View Console Output'}
           {showConsoleOutput ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
+        {/* Debug Button - Only for failed jobs */}
+        {job.status === 'failed' && (
+          <button
+            onClick={handleDebug}
+            className="flex items-center gap-2 px-4 py-2 bg-warning-500 hover:bg-warning-600 text-white rounded-lg transition-colors"
+          >
+            <Bug className="h-4 w-4" />
+            Debug
+          </button>
+        )}
       </div>
 
       {/* Console Output */}
@@ -453,12 +462,13 @@ export const JobDetailsPage: React.FC = () => {
                 return (
                   <div key={index} className="flex items-start gap-3 mb-1 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded">
                     <span className="text-gray-600 dark:text-gray-500 text-xs flex-shrink-0 w-20">
-                      {new Date(log.timestamp).toLocaleTimeString('en-US', {
+                      {new Intl.DateTimeFormat('en-US', {
+                        timeZone: getUserTimezone(),
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',
                         hour12: false
-                      })}
+                      }).format(new Date(log.timestamp))}
                     </span>
                     <span className={`${levelColor} font-bold text-xs uppercase flex-shrink-0 w-14`}>
                       {logLevel}
@@ -522,6 +532,42 @@ export const JobDetailsPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Modal */}
+      {showDebugModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Bug className="h-6 w-6 text-warning-600" />
+                <h3 className="text-xl font-semibold text-gray-900">Debug Feature</h3>
+              </div>
+              <button
+                onClick={() => setShowDebugModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-gray-700 text-center py-8">
+                Debug feature coming soon
+              </p>
+              <p className="text-sm text-gray-500 text-center">
+                This feature will help you analyze and troubleshoot failed job executions.
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowDebugModal(false)}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
