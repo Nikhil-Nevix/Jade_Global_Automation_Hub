@@ -365,7 +365,7 @@ export const Dashboard: React.FC = () => {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
-        <p className="text-gray-600 mt-1">Overview of your infrastructure automation platform</p>
+        <p className="text-gray-600 mt-1">Overview of your infra automation platform</p>
       </div>
 
       {/* Stats cards */}

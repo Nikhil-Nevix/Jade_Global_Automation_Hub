@@ -15,6 +15,7 @@ import {
   X,
   History,
   Bell,
+  Download,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -57,6 +58,12 @@ const navItems: NavItem[] = [
     path: '/jobs',
     icon: Clock,
     roles: ['super_admin', 'admin', 'user'],
+  },
+  {
+    name: 'Patch Management',
+    path: '/patch-management',
+    icon: Download,
+    roles: ['super_admin', 'admin'],
   },
   {
     name: 'User Management',

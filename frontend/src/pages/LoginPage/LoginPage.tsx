@@ -9,7 +9,8 @@ import { Lock, User, Mail, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { authApi } from '../../api/api';
 import type { LoginRequest } from '../../types';
-import jadeLogo from '../../assets/project_logo.png';
+import projectLogo from '../../assets/Infra_Automation_Hub.jpg';
+import jadeLogo from '../../assets/JadeLogo-bg.png';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -146,246 +147,318 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-gray-50 via-purple-50 to-gray-100">
-      {/* Main content centered */}
-      <div className="max-w-md w-full">
-        {/* Jade Logo and title */}
-        <div className="text-center mb-8">
-          <img src={jadeLogo} alt="Jade Logo" className="w-full max-w-md h-auto mx-auto mb-6" />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Jade Global Automation Hub</h1>
-          <p className="text-gray-600">Streamline your infrastructure management</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-purple-50/30 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-primary-200/40 to-purple-300/40 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-tr from-blue-200/40 to-primary-200/40 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-purple-100/20 to-primary-100/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+      </div>
 
-        {/* Login/Signup form */}
-        <div className="bg-white rounded-lg shadow-glow-lg p-8 border border-primary-200">
-          {isSignupMode ? (
-            // Signup Form
-            <form onSubmit={handleSignupSubmit} className="space-y-6">
-              {/* Error message */}
-              {signupError && (
-                <div className="bg-error-50 border border-error-300 text-error-800 px-4 py-3 rounded-md text-sm font-medium">
-                  {signupError}
-                </div>
-              )}
-
-              {/* Success message */}
-              {signupSuccess && (
-                <div className="bg-success-50 border border-success-300 text-success-800 px-4 py-3 rounded-md text-sm font-medium">
-                  {signupSuccess}
-                </div>
-              )}
-
-              {/* Username field */}
-              <div>
-                <label htmlFor="signup-username" className="block text-sm font-medium text-gray-700 mb-2">
-                  Username
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="signup-username"
-                    name="username"
-                    type="text"
-                    required
-                    value={signupData.username}
-                    onChange={handleSignupChange}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Choose a username"
-                  />
-                </div>
-              </div>
-
-              {/* Email field */}
-              <div>
-                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Email
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="signup-email"
-                    name="email"
-                    type="email"
-                    required
-                    value={signupData.email}
-                    onChange={handleSignupChange}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="your@email.com"
-                  />
-                </div>
-              </div>
-
-              {/* Password field */}
-              <div>
-                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="signup-password"
-                    name="password"
-                    type={showSignupPassword ? "text" : "password"}
-                    required
-                    value={signupData.password}
-                    onChange={handleSignupChange}
-                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="At least 8 characters"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSignupPassword(!showSignupPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
-                  >
-                    {showSignupPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Confirm Password field */}
-              <div>
-                <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="signup-confirm-password"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    required
-                    value={signupData.confirmPassword}
-                    onChange={handleSignupChange}
-                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Confirm your password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Submit button */}
-              <button
-                type="submit"
-                disabled={signupLoading}
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <UserPlus className="h-5 w-5" />
-                {signupLoading ? 'Creating account...' : 'Create Account'}
-              </button>
-            </form>
-          ) : (
-            // Login Form
-            <form onSubmit={handleLoginSubmit} className="space-y-6">
-              {/* Error message */}
-              {error && (
-                <div className="bg-error-50 border border-error-300 text-error-800 px-4 py-3 rounded-md text-sm font-medium">
-                  {error}
-                </div>
-              )}
-
-              {/* Username field */}
-              <div>
-                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                  Username
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    required
-                    value={credentials.username}
-                    onChange={handleLoginChange}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter your username"
-                  />
-                </div>
-              </div>
-
-              {/* Password field */}
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={credentials.password}
-                    onChange={handleLoginChange}
-                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter your password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Submit button */}
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={(e) => {
-                  e.preventDefault();
-                  console.log('Button clicked!');
-                  handleLoginSubmit(e as any);
-                }}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isLoading ? 'Signing in...' : 'Sign in'}
-              </button>
-            </form>
-          )}
-
-          {/* Toggle between login and signup */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-600">
-                  {isSignupMode ? 'Already have an account?' : "Don't have an account?"}
-                </span>
-              </div>
+      {/* Main Container */}
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-6 py-12">
+        {/* Logos Header */}
+        <div className="flex items-center justify-center gap-12 mb-12">
+          {/* Jade Global Logo */}
+          <div className="relative group">
+            <div className="absolute -inset-2 bg-gradient-to-r from-primary-400/30 to-purple-400/30 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl p-6 border border-gray-200/50 transform transition-all duration-500 hover:scale-105 hover:shadow-2xl">
+              <img 
+                src={jadeLogo} 
+                alt="Jade Global" 
+                className="h-14 w-auto filter drop-shadow-lg"
+              />
             </div>
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="mt-4 w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-            >
-              {isSignupMode ? 'Sign in instead' : 'Create new account'}
-            </button>
           </div>
 
+          {/* Divider */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary-300 to-transparent"></div>
+            <div className="w-2 h-2 rounded-full bg-primary-400 animate-pulse"></div>
+            <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary-300 to-transparent"></div>
+          </div>
+
+          {/* Project Logo */}
+          <div className="relative group">
+            <div className="absolute -inset-2 bg-gradient-to-r from-purple-400/30 to-primary-400/30 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl p-6 border border-gray-200/50 transform transition-all duration-500 hover:scale-105 hover:shadow-2xl">
+              <img 
+                src={projectLogo} 
+                alt="Infra Automation Hub" 
+                className="h-14 w-auto filter drop-shadow-lg rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Title Section */}
+        <div className="text-center mb-10">
+          <h1 className="text-5xl md:text-6xl font-black mb-4 bg-gradient-to-r from-gray-900 via-primary-700 to-purple-800 bg-clip-text text-transparent tracking-tight leading-tight">
+            Infra Automation Hub
+          </h1>
+          <p className="text-gray-600 text-lg font-medium">
+            Streamline your infra management with intelligent automation
+          </p>
+        </div>
+
+        {/* Login/Signup Card */}
+        <div className="max-w-md mx-auto relative">
+          {/* Animated border glow */}
+          <div className="absolute -inset-1 bg-gradient-to-r from-primary-600 via-purple-600 to-primary-600 rounded-3xl blur-xl opacity-20 transition-all duration-700 animate-gradient bg-[length:200%_auto]"></div>
           
+          {/* Main Card */}
+          <div className="relative bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden">
+            {/* Card Header */}
+            <div className="bg-gradient-to-r from-primary-600 via-purple-600 to-primary-700 px-10 py-8 text-white">
+              <h2 className="text-3xl font-bold mb-2">
+                {isSignupMode ? 'Create Account' : 'Welcome Back'}
+              </h2>
+              <p className="text-primary-100 text-sm">
+                {isSignupMode ? 'Join us to streamline your infra' : 'Sign in to access your automation hub'}
+              </p>
+            </div>
+
+            {/* Card Body */}
+            <div className="px-10 py-8">
+              {isSignupMode ? (
+                // Signup Form
+                <form onSubmit={handleSignupSubmit} className="space-y-5">
+                  {/* Error message */}
+                  {signupError && (
+                    <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-5 py-4 rounded-r-lg text-sm font-medium flex items-start gap-3">
+                      <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      <span>{signupError}</span>
+                    </div>
+                  )}
+
+                  {/* Success message */}
+                  {signupSuccess && (
+                    <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-5 py-4 rounded-r-lg text-sm font-medium flex items-start gap-3">
+                      <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>{signupSuccess}</span>
+                    </div>
+                  )}
+
+                  {/* Username field */}
+                  <div>
+                    <label htmlFor="signup-username" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <User className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="signup-username"
+                        name="username"
+                        type="text"
+                        required
+                        value={signupData.username}
+                        onChange={handleSignupChange}
+                        className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="Choose a username"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email field */}
+                  <div>
+                    <label htmlFor="signup-email" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Mail className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="signup-email"
+                        name="email"
+                        type="email"
+                        required
+                        value={signupData.email}
+                        onChange={handleSignupChange}
+                        className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="your@email.com"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password field */}
+                  <div>
+                    <label htmlFor="signup-password" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="signup-password"
+                        name="password"
+                        type={showSignupPassword ? "text" : "password"}
+                        required
+                        value={signupData.password}
+                        onChange={handleSignupChange}
+                        className="block w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="At least 8 characters"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupPassword(!showSignupPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-primary-600 transition-colors"
+                      >
+                        {showSignupPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Confirm Password field */}
+                  <div>
+                    <label htmlFor="signup-confirm-password" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="signup-confirm-password"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        required
+                        value={signupData.confirmPassword}
+                        onChange={handleSignupChange}
+                        className="block w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="Confirm your password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-primary-600 transition-colors"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit button */}
+                  <button
+                    type="submit"
+                    disabled={signupLoading}
+                    className="w-full flex justify-center items-center gap-2 py-3.5 px-4 mt-6 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-gradient-to-r from-primary-600 via-purple-600 to-primary-600 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] bg-[length:200%_auto] hover:bg-right-bottom"
+                  >
+                    <UserPlus className="h-5 w-5" />
+                    <span>{signupLoading ? 'Creating account...' : 'Create Account'}</span>
+                  </button>
+                </form>
+              ) : (
+                // Login Form
+                <form onSubmit={handleLoginSubmit} className="space-y-5">
+                  {/* Error message */}
+                  {error && (
+                    <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-5 py-4 rounded-r-lg text-sm font-medium flex items-start gap-3">
+                      <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  {/* Username field */}
+                  <div>
+                    <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <User className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        required
+                        value={credentials.username}
+                        onChange={handleLoginChange}
+                        className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="Enter your username"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password field */}
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={credentials.password}
+                        onChange={handleLoginChange}
+                        className="block w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                        placeholder="Enter your password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-primary-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit button */}
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleLoginSubmit(e as any);
+                    }}
+                    className="w-full flex justify-center items-center gap-2 py-3.5 px-4 mt-6 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-gradient-to-r from-primary-600 via-purple-600 to-primary-600 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] bg-[length:200%_auto] hover:bg-right-bottom"
+                  >
+                    <span>{isLoading ? 'Signing in...' : 'Sign In'}</span>
+                  </button>
+                </form>
+              )}
+
+              {/* Toggle between login and signup */}
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <p className="text-center text-sm text-gray-600 mb-4">
+                  {isSignupMode ? 'Already have an account?' : "Don't have an account?"}
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleMode}
+                  className="w-full py-3 px-4 rounded-xl text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 hover:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                >
+                  {isSignupMode ? 'Sign in to your account' : 'Create a new account'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-12 text-center">
+          <p className="text-sm text-gray-500">
+            © 2026 Jade Global. All rights reserved.
+          </p>
+          <p className="text-xs text-gray-400 mt-2">
+            Powered by Infra Automation Hub
+          </p>
         </div>
       </div>
     </div>

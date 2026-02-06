@@ -21,6 +21,7 @@ import { UsersPage } from './pages/UsersPage/UsersPage';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
+import PatchManagement from './pages/PatchManagement';
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -175,6 +176,16 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <NotificationPreferencesPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patch-management"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <PatchManagement />
               </MainLayout>
             </ProtectedRoute>
           }
