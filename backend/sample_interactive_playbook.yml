@@ -96,6 +96,84 @@
         - ansible_os_family == "RedHat"
         - selected_patches | length > 0
       become: yes
+      register: install_result
+    
+    - name: Get new versions of selected packages (Debian/Ubuntu)
+      shell: |
+        for pkg in {{ selected_patches | join(' ') }}; do
+          version=$(dpkg-query -W -f='${Version}' $pkg 2>/dev/null || echo "not-installed")
+          echo "$pkg|$version"
+        done
+      register: new_versions_debian
+      when: 
+        - ansible_os_family == "Debian"
+        - selected_patches | length > 0
+      changed_when: false
+    
+    - name: Get new versions of selected packages (RedHat/CentOS)
+      shell: |
+        for pkg in {{ selected_patches | join(' ') }}; do
+          version=$(rpm -q $pkg --queryformat '%{VERSION}-%{RELEASE}' 2>/dev/null || echo "not-installed")
+          echo "$pkg|$version"
+        done
+      register: new_versions_rhel
+      when: 
+        - ansible_os_family == "RedHat"
+        - selected_patches | length > 0
+      changed_when: false
+    
+    - name: Parse new versions
+      set_fact:
+        new_versions_dict: >-
+          {%- set versions = {} -%}
+          {%- if ansible_os_family == "RedHat" and new_versions_rhel is defined -%}
+            {%- for line in new_versions_rhel.stdout_lines -%}
+              {%- set parts = line.split('|') -%}
+              {%- if parts | length == 2 -%}
+                {%- set _ = versions.update({parts[0]: parts[1]}) -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- elif ansible_os_family == "Debian" and new_versions_debian is defined -%}
+            {%- for line in new_versions_debian.stdout_lines -%}
+              {%- set parts = line.split('|') -%}
+              {%- if parts | length == 2 -%}
+                {%- set _ = versions.update({parts[0]: parts[1]}) -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endif -%}
+          {{ versions }}
+      when: selected_patches | length > 0
+    
+    - name: Build patch report rows
+      set_fact:
+        patch_report_rows: >-
+          [
+          {% for pkg in selected_patches %}
+          "{{ pkg }},unknown,{{ new_versions_dict.get(pkg, 'unknown') }},Installed"{{ "," if not loop.last else "" }}
+          {% endfor %}
+          ]
+      when: selected_patches | length > 0
+    
+    - name: Generate patch report CSV
+      set_fact:
+        patch_report_csv: "Package,Old Version,New Version,Status\n{{ patch_report_rows | from_json | join('\n') }}"
+      when: selected_patches | length > 0
+    
+    - name: Send patch report to backend
+      uri:
+        url: "{{ backend_url }}/api/jobs/{{ job_id }}/patch-report"
+        method: POST
+        body_format: json
+        body:
+          csv_data: "{{ patch_report_csv }}"
+        headers:
+          Content-Type: "application/json"
+        status_code: 200
+        timeout: 30
+      delegate_to: localhost
+      when: selected_patches | length > 0
+      register: report_result
+      ignore_errors: true
     
     - name: Clean up temporary files
       file:
