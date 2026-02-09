@@ -620,3 +620,87 @@ def export_analytics():
             'error': 'internal_error',
             'message': f'An error occurred while exporting analytics: {str(err)}'
         })), 500
+
+
+@jobs_bp.route('/<int:job_id>/rpm-csv', methods=['GET'])
+@jwt_required()
+def get_rpm_csv(job_id):
+    """
+    Fetch and return RPM upgrade CSV file from remote server
+    
+    Downloads the rpm_upgrades_with_lag.csv file from the server
+    where the job was executed.
+    
+    Args:
+        job_id: Job database ID
+    
+    Returns:
+        JSON with CSV data parsed into rows, or error
+    """
+    try:
+        # Get current user
+        current_user_id = get_jwt_identity()
+        current_user = auth_service.get_current_user(current_user_id)
+        
+        # Get job
+        from app.models import Job
+        job = Job.query.get(job_id)
+        if not job:
+            return jsonify(error_schema.dump({
+                'error': 'not_found',
+                'message': f'Job {job_id} not found'
+            })), 404
+        
+        # Get server
+        if not job.server:
+            return jsonify(error_schema.dump({
+                'error': 'not_found',
+                'message': 'Server information not found for this job'
+            })), 404
+        
+        # Fetch CSV file from remote server
+        from app.services.ssh_service import SSHService
+        ssh_service = SSHService()
+        
+        csv_path = '/var/tmp/rpm_upgrades_with_lag.csv'
+        
+        # Check if file exists
+        if not ssh_service.file_exists(job.server, csv_path):
+            return jsonify(error_schema.dump({
+                'error': 'file_not_found',
+                'message': f'CSV file not found at {csv_path} on server {job.server.hostname}'
+            })), 404
+        
+        # Read CSV content
+        csv_content = ssh_service.read_file(job.server, csv_path)
+        
+        # Parse CSV into structured data
+        import csv
+        import io
+        
+        csv_reader = csv.reader(io.StringIO(csv_content))
+        rows = list(csv_reader)
+        
+        if not rows:
+            return jsonify(error_schema.dump({
+                'error': 'empty_file',
+                'message': 'CSV file is empty'
+            })), 400
+        
+        # First row is header, rest are data
+        headers = rows[0] if rows else []
+        data_rows = rows[1:] if len(rows) > 1 else []
+        
+        return jsonify({
+            'success': True,
+            'filename': 'rpm_upgrades_with_lag.csv',
+            'headers': headers,
+            'data': data_rows,
+            'total_rows': len(data_rows)
+        }), 200
+        
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'Failed to fetch CSV: {str(err)}'
+        })), 500

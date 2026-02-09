@@ -1,6 +1,6 @@
 /**
  * JobDetailsPage Component
- * View job details with real-time log streaming
+ * View job details with real-time log streaming via WebSocket
  */
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -23,12 +23,16 @@ import {
   Download,
   Table,
   Layers,
-  FileText
+  FileText,
+  Search,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { jobsApi } from '../../api/api';
 import { useUIStore } from '../../store/uiStore';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
 import { formatJobDateTime, getUserTimezone } from '../../utils/timezone';
+import { webSocketService } from '../../services/websocket';
 import type { Job, JobLog } from '../../types';
 
 interface ParsedResult {
@@ -55,6 +59,12 @@ export const JobDetailsPage: React.FC = () => {
   const [patchReportData, setPatchReportData] = useState<Array<{package: string, oldVersion: string, newVersion: string, status: string}>>([]);
   const [childJobs, setChildJobs] = useState<Job[]>([]);
   const [loadingChildJobs, setLoadingChildJobs] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [rpmCsvData, setRpmCsvData] = useState<{headers: string[], data: string[][]} | null>(null);
+  const [showRpmCsv, setShowRpmCsv] = useState(false);
+  const [loadingRpmCsv, setLoadingRpmCsv] = useState(false);
+  const [csvSearchQuery, setCsvSearchQuery] = useState('');
+  const [csvSortConfig, setCsvSortConfig] = useState<{columnIndex: number, direction: 'asc' | 'desc'} | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -62,24 +72,82 @@ export const JobDetailsPage: React.FC = () => {
     }
   }, [id]);
 
+  // WebSocket connection and subscription
+  useEffect(() => {
+    if (!id || !job) return;
+
+    // Get auth token from localStorage
+    const token = localStorage.getItem('token');
+    
+    // Connect to WebSocket
+    webSocketService.connect(token || undefined);
+    setWsConnected(webSocketService.isConnected());
+
+    // Subscribe to job logs
+    webSocketService.subscribeToJob(Number(id), {
+      onLog: (logData) => {
+        // Add incoming log to the logs array
+        const newLog: JobLog = {
+          id: logData.line_number,
+          job_id: Number(id),
+          line_number: logData.line_number,
+          content: logData.content,
+          timestamp: logData.timestamp,
+          log_level: logData.log_level
+        };
+        
+        setLogs((prevLogs) => {
+          // Avoid duplicates by checking line number
+          const exists = prevLogs.some(log => log.line_number === newLog.line_number);
+          if (exists) return prevLogs;
+          return [...prevLogs, newLog];
+        });
+      },
+      onStatus: (statusData) => {
+        // Update job status in real-time
+        if (statusData.job_id === Number(id)) {
+          setJob((prevJob) => prevJob ? {
+            ...prevJob,
+            status: statusData.status,
+            error_message: statusData.error_message || prevJob.error_message
+          } : null);
+        }
+      },
+      onSubscribed: (data) => {
+        console.log('Subscribed to job logs:', data);
+      },
+      onError: (error) => {
+        console.error('WebSocket error:', error);
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      webSocketService.unsubscribeFromJob(Number(id));
+    };
+  }, [id, job?.id]); // Only reconnect when id or job.id changes
+
   useEffect(() => {
     if (!autoRefresh || !job) return;
 
-    // Auto-refresh every 2 seconds for running jobs
-    if (job.status === 'running' || job.status === 'pending') {
-      const interval = setInterval(() => {
-        if (job.is_batch_job) {
-          // For batch jobs, refresh child jobs
-          loadChildJobs();
-        } else {
-          // For regular jobs, refresh logs
-          loadLogs();
-        }
-      }, 2000);
+    // Fallback polling for non-WebSocket scenarios
+    // Only poll if WebSocket is not connected or for batch jobs
+    if (!wsConnected || job.is_batch_job) {
+      if (job.status === 'running' || job.status === 'pending') {
+        const interval = setInterval(() => {
+          if (job.is_batch_job) {
+            // For batch jobs, refresh child jobs
+            loadChildJobs();
+          } else {
+            // For regular jobs, refresh logs (fallback)
+            loadLogs();
+          }
+        }, 2000);
 
-      return () => clearInterval(interval);
+        return () => clearInterval(interval);
+      }
     }
-  }, [autoRefresh, job]);
+  }, [autoRefresh, job, wsConnected]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new logs arrive
@@ -237,6 +305,33 @@ export const JobDetailsPage: React.FC = () => {
     }
   };
 
+  const loadRpmCsv = async () => {
+    if (!id) return;
+    
+    setLoadingRpmCsv(true);
+    // Reset filters
+    setCsvSearchQuery('');
+    setCsvSortConfig(null);
+    
+    try {
+      const csvData = await jobsApi.getRpmCsv(Number(id));
+      setRpmCsvData({
+        headers: csvData.headers,
+        data: csvData.data
+      });
+      setShowRpmCsv(true);
+      addNotification('success', 'RPM CSV data loaded successfully');
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        addNotification('info', 'CSV file not found on server');
+      } else {
+        addNotification('error', error.response?.data?.message || 'Failed to load CSV data');
+      }
+    } finally {
+      setLoadingRpmCsv(false);
+    }
+  };
+
   const handleCancel = async () => {
     if (!job || !confirm('Are you sure you want to cancel this job?')) {
       return;
@@ -266,6 +361,81 @@ export const JobDetailsPage: React.FC = () => {
 
   const handleDebug = () => {
     setShowDebugModal(true);
+  };
+
+  // CSV Helper Functions
+  const handleCsvSort = (columnIndex: number) => {
+    setCsvSortConfig((prevConfig) => {
+      if (prevConfig?.columnIndex === columnIndex) {
+        // Toggle direction
+        return {
+          columnIndex,
+          direction: prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      // New column, default to ascending
+      return { columnIndex, direction: 'asc' };
+    });
+  };
+
+  const getFilteredAndSortedCsvData = () => {
+    if (!rpmCsvData) return [];
+
+    let filteredData = rpmCsvData.data;
+
+    // Apply search filter
+    if (csvSearchQuery.trim()) {
+      const query = csvSearchQuery.toLowerCase();
+      filteredData = filteredData.filter(row =>
+        row.some(cell => cell.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply sorting
+    if (csvSortConfig) {
+      filteredData = [...filteredData].sort((a, b) => {
+        const aVal = a[csvSortConfig.columnIndex] || '';
+        const bVal = b[csvSortConfig.columnIndex] || '';
+        
+        // Try numeric comparison first
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return csvSortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        
+        // Fall back to string comparison
+        const comparison = aVal.localeCompare(bVal);
+        return csvSortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+    }
+
+    return filteredData;
+  };
+
+  const handleDownloadCsv = () => {
+    if (!rpmCsvData) return;
+
+    // Create CSV content
+    const csvContent = [
+      rpmCsvData.headers.join(','),
+      ...getFilteredAndSortedCsvData().map(row => 
+        row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')
+      )
+    ].join('\n');
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rpm_upgrades_with_lag_job_${job?.job_id}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addNotification('success', 'CSV downloaded successfully');
   };
 
   const handleRerun = async () => {
@@ -620,6 +790,17 @@ export const JobDetailsPage: React.FC = () => {
             {showResults ? 'Hide Results' : 'View Results'}
           </button>
         )}
+        {/* View RPM CSV Button - Only for check.yml playbook */}
+        {job.status === 'success' && !job.is_batch_job && job.playbook?.name?.toLowerCase().endsWith('check.yml') && (
+          <button
+            onClick={loadRpmCsv}
+            disabled={loadingRpmCsv}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FileText className="h-4 w-4" />
+            {loadingRpmCsv ? 'Loading...' : (showRpmCsv ? 'Reload RPM CSV' : 'View RPM Upgrades')}
+          </button>
+        )}
         {/* View Console Output Button - Only for non-batch jobs */}
         {!job.is_batch_job && (
           <button
@@ -709,6 +890,135 @@ export const JobDetailsPage: React.FC = () => {
             No Change: {patchReportData.filter(p => p.status === 'No Change').length} | 
             Newly Installed: {patchReportData.filter(p => p.status === 'Newly Installed').length}
             {patchReportData.filter(p => p.status === 'Failed').length > 0 && ` | Failed: ${patchReportData.filter(p => p.status === 'Failed').length}`}
+          </div>
+        </div>
+      )}
+
+      {/* RPM CSV Table */}
+      {showRpmCsv && rpmCsvData && (
+        <div className="bg-white border border-primary-200 shadow-glow rounded-lg p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-purple-600" />
+              <h3 className="text-lg font-semibold text-gray-900">RPM Upgrades with Lag</h3>
+            </div>
+            <button
+              onClick={() => {
+                setShowRpmCsv(false);
+                setCsvSearchQuery('');
+                setCsvSortConfig(null);
+              }}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Search and Download Controls */}
+          <div className="flex items-center justify-between gap-4 mb-4">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search in table..."
+                value={csvSearchQuery}
+                onChange={(e) => setCsvSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              {csvSearchQuery && (
+                <button
+                  onClick={() => setCsvSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                >
+                  <X className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                </button>
+              )}
+            </div>
+
+            {/* Download Button */}
+            <button
+              onClick={handleDownloadCsv}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download CSV
+            </button>
+          </div>
+
+          {/* Table Container with max height and sticky header */}
+          <div className="overflow-x-auto rounded-lg border-2 border-gray-500 max-h-[600px] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-500 border-collapse">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr className="border-b-2 border-gray-500">
+                  {rpmCsvData.headers.map((header, index) => (
+                    <th
+                      key={index}
+                      onClick={() => handleCsvSort(index)}
+                      className="px-6 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none border-r border-gray-500 last:border-r-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{header}</span>
+                        {csvSortConfig?.columnIndex === index && (
+                          csvSortConfig.direction === 'asc' ? (
+                            <ArrowUp className="h-4 w-4 text-purple-600" />
+                          ) : (
+                            <ArrowDown className="h-4 w-4 text-purple-600" />
+                          )
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-500">
+                {getFilteredAndSortedCsvData().length > 0 ? (
+                  getFilteredAndSortedCsvData().map((row, rowIndex) => (
+                    <tr 
+                      key={rowIndex} 
+                      className={`hover:bg-purple-50 transition-colors border-b border-gray-500 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                    >
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={cellIndex}
+                          className="px-6 py-4 text-sm text-gray-900 border-r border-gray-500 last:border-r-0"
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td 
+                      colSpan={rpmCsvData.headers.length}
+                      className="px-6 py-8 text-center text-sm text-gray-500 border-0"
+                    >
+                      {csvSearchQuery ? 'No matching rows found' : 'No data available'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer Statistics */}
+          <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+            <div>
+              Showing {getFilteredAndSortedCsvData().length} of {rpmCsvData.data.length} rows
+              {csvSearchQuery && <span className="ml-2 text-purple-600 font-medium">(filtered)</span>}
+            </div>
+            {csvSortConfig && (
+              <button
+                onClick={() => setCsvSortConfig(null)}
+                className="text-purple-600 hover:text-purple-700 font-medium"
+              >
+                Clear sorting
+              </button>
+            )}
           </div>
         </div>
       )}

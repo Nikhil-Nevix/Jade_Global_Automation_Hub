@@ -40,6 +40,10 @@ def create_app(config_name=None):
     # Initialize extensions
     init_extensions(app)
     
+    # Register WebSocket handlers (must be after init_extensions)
+    with app.app_context():
+        from app.api import websocket_jobs  # noqa
+    
     # Register blueprints
     register_blueprints(app)
     

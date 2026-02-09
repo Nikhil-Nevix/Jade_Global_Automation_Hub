@@ -423,6 +423,18 @@ export const jobsApi = {
     });
     return response.data;
   },
+
+  // RPM CSV report
+  getRpmCsv: async (jobId: number): Promise<{
+    success: boolean;
+    filename: string;
+    headers: string[];
+    data: string[][];
+    total_rows: number;
+  }> => {
+    const response = await axiosInstance.get(`/jobs/${jobId}/rpm-csv`);
+    return response.data;
+  },
 };
 
 // ===== Tickets API =====

@@ -92,7 +92,11 @@ def execute_playbook_task(self, job_id):
             async_mode=True
         )
         
-        # Poll for completion while checking for cancellation
+        # Track processed output to avoid duplicates
+        processed_lines = 0
+        logs_to_insert = []
+        
+        # Poll for completion while checking for cancellation and streaming logs
         while thread.is_alive():
             # Check if job was cancelled in database
             db.session.expire(job)  # Refresh from DB
@@ -105,27 +109,82 @@ def execute_playbook_task(self, job_id):
                 
                 raise Terminated("Job cancelled by user during execution")
             
+            # Read and emit new stdout lines in real-time
+            try:
+                if runner.stdout and hasattr(runner.stdout, 'read'):
+                    current_output = runner.stdout.read()
+                    if current_output:
+                        # Parse new lines
+                        lines = current_output.split('\n')
+                        new_lines = lines[processed_lines:]
+                        
+                        for i, line in enumerate(new_lines):
+                            if line.strip():  # Skip empty lines
+                                line_number = processed_lines + i + 1
+                                
+                                # Parse log level
+                                log_level = 'INFO'
+                                if 'ERROR' in line or 'FAILED' in line or 'fatal:' in line:
+                                    log_level = 'ERROR'
+                                elif 'WARN' in line or 'WARNING' in line:
+                                    log_level = 'WARNING'
+                                elif 'ok:' in line or 'changed:' in line:
+                                    log_level = 'SUCCESS'
+                                
+                                log_entry = {
+                                    'line_number': line_number,
+                                    'content': line,
+                                    'log_level': log_level
+                                }
+                                
+                                # Add to buffer for database insertion
+                                logs_to_insert.append(log_entry)
+                                
+                                # Emit via WebSocket immediately
+                                from app.api.websocket_jobs import emit_job_log
+                                from datetime import datetime
+                                emit_job_log(job_id, {
+                                    **log_entry,
+                                    'timestamp': datetime.utcnow().isoformat()
+                                })
+                        
+                        processed_lines = len(lines)
+                        
+                        # Insert logs in bulk every 10 lines for efficiency
+                        if len(logs_to_insert) >= 10:
+                            job_service.add_job_logs_bulk(job_id, logs_to_insert)
+                            logs_to_insert = []
+            except Exception as log_error:
+                # Don't fail the job if log streaming fails
+                print(f"Log streaming error: {str(log_error)}")
+            
             # Sleep briefly before next check
             time.sleep(0.5)
         
         # Wait for thread to complete
         thread.join()
         
-        # Parse output
+        # Insert any remaining logs
+        if logs_to_insert:
+            job_service.add_job_logs_bulk(job_id, logs_to_insert)
+        
+        # Parse full output for final check
         parsed_output = ansible_runner_instance.parse_runner_output(runner)
         
-        # Process stdout logs
-        logs_to_insert = []
+        # Process any remaining stdout logs not captured during streaming
         if parsed_output.get('stdout'):
             parsed_logs = log_parser.parse_output(parsed_output['stdout'])
-            for log_entry in parsed_logs:
-                logs_to_insert.append({
-                    'line_number': log_entry['line_number'],
-                    'content': log_entry['content'],
-                    'log_level': log_entry['log_level']
-                })
+            # Only add logs that weren't already added during streaming
+            if len(parsed_logs) > processed_lines:
+                remaining_logs = parsed_logs[processed_lines:]
+                for log_entry in remaining_logs:
+                    logs_to_insert.append({
+                        'line_number': log_entry['line_number'],
+                        'content': log_entry['content'],
+                        'log_level': log_entry['log_level']
+                    })
         
-        # Insert logs in bulk
+        # Insert any final remaining logs
         if logs_to_insert:
             job_service.add_job_logs_bulk(job_id, logs_to_insert)
         
@@ -146,6 +205,10 @@ def execute_playbook_task(self, job_id):
             final_status,
             error_message=error_message
         )
+        
+        # Emit final status via WebSocket
+        from app.api.websocket_jobs import emit_job_status
+        emit_job_status(job_id, final_status, error_message)
         
         # Send notification based on job result
         try:
@@ -182,7 +245,7 @@ def execute_playbook_task(self, job_id):
             'job_id': job.job_id,
             'rc': runner.rc,
             'stats': parsed_output.get('stats', {}),
-            'total_logs': len(logs_to_insert)
+            'total_logs': processed_lines
         }
     
     except Terminated:
