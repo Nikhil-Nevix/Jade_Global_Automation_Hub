@@ -128,7 +128,7 @@ CREATE TABLE job_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     job_id INT NOT NULL,
     line_number INT NOT NULL,
-    content TEXT NOT NULL,
+    content MEDIUMTEXT NOT NULL COMMENT 'Ansible log output (supports verbose logs)',
     log_level VARCHAR(20) NULL COMMENT 'INFO, WARNING, ERROR, DEBUG',
     timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     

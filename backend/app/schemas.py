@@ -122,6 +122,9 @@ class JobLogSchema(ma.SQLAlchemyAutoSchema):
 
 class JobSchema(ma.SQLAlchemyAutoSchema):
     """Job serialization schema"""
+    playbook_id = fields.Int(dump_only=False)
+    server_id = fields.Int(dump_only=False)
+    user_id = fields.Int(dump_only=False)
     playbook = fields.Nested(PlaybookSchema, only=('id', 'name'))
     server = fields.Nested(ServerSchema, only=('id', 'hostname', 'ip_address'))
     user = fields.Nested(UserSchema, only=('id', 'username'))
@@ -131,7 +134,7 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Job
         load_instance = True
-        dump_only = ('id', 'job_id', 'celery_task_id', 'created_at', 'started_at', 'completed_at', 'parent_job_id', 'is_batch_job', 'batch_config')
+        dump_only = ('id', 'job_id', 'celery_task_id', 'created_at', 'started_at', 'completed_at', 'parent_job_id', 'is_batch_job', 'batch_config', 'patch_report')
     
     def get_child_count(self, obj):
         """Get count of child jobs for batch jobs"""

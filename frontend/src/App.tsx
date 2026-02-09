@@ -3,12 +3,14 @@
  * Sets up routing and layout
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Navbar } from './components/Navbar/Navbar';
 import { Notifications } from './components/Notifications';
+import { InteractivePatchesDialog } from './components/InteractivePatchesDialog';
+import { socketService } from './services/socket.service';
 import { LoginPage } from './pages/LoginPage/LoginPage';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ServersPage } from './pages/ServersPage/ServersPage';
@@ -21,7 +23,6 @@ import { UsersPage } from './pages/UsersPage/UsersPage';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
-import PatchManagement from './pages/PatchManagement';
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -61,6 +62,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 export const App: React.FC = () => {
   const { isAuthenticated, loadUser, user } = useAuthStore();
+  const [patchesDialog, setPatchesDialog] = useState<{
+    jobId: string;
+    filePath: string;
+  } | null>(null);
 
   useEffect(() => {
     // Load user data on app start if authenticated and user not already loaded
@@ -72,9 +77,52 @@ export const App: React.FC = () => {
     }
   }, [isAuthenticated, loadUser, user]);
 
+  // Initialize WebSocket connection
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('[App] Initializing WebSocket connection...');
+      
+      // Listen for patches_ready event before connecting
+      const handlePatchesReady = (data: { job_id: string; file_path: string }) => {
+        console.log('[App] Patches ready event received:', data);
+        setPatchesDialog({
+          jobId: data.job_id,
+          filePath: data.file_path,
+        });
+      };
+
+      socketService.on('patches_ready', handlePatchesReady);
+      
+      // Connect to WebSocket (strip /api suffix as WebSocket connects to root)
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const wsUrl = apiUrl.replace(/\/api\/?$/, ''); // Remove /api suffix
+        console.log('[App] WebSocket URL:', wsUrl);
+        socketService.connect(wsUrl);
+      } catch (error) {
+        console.error('[App] WebSocket connection error:', error);
+      }
+
+      return () => {
+        socketService.off('patches_ready', handlePatchesReady);
+        socketService.disconnect();
+      };
+    }
+  }, [isAuthenticated]);
+
   return (
     <BrowserRouter>
       <Notifications />
+      
+      {/* Interactive Patches Dialog */}
+      {patchesDialog && (
+        <InteractivePatchesDialog
+          jobId={patchesDialog.jobId}
+          filePath={patchesDialog.filePath}
+          onClose={() => setPatchesDialog(null)}
+        />
+      )}
+
       <Routes>
         {/* Public route */}
         <Route path="/login" element={<LoginPage />} />
@@ -176,16 +224,6 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <NotificationPreferencesPage />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/patch-management"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <PatchManagement />
               </MainLayout>
             </ProtectedRoute>
           }

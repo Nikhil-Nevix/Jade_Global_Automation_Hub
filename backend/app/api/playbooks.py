@@ -136,8 +136,8 @@ def update_playbook_content(playbook_id):
         current_user_id = get_jwt_identity()
         current_user = auth_service.get_current_user(current_user_id)
         
-        # Check permission - admin only
-        if current_user.role != 'admin':
+        # Check permission - admin or super_admin
+        if not auth_service.check_permission(current_user, 'admin'):
             return jsonify(error_schema.dump({
                 'error': 'forbidden',
                 'message': 'Only administrators can edit playbook content'
@@ -505,6 +505,14 @@ def update_folder_file_content(playbook_id, file_path):
     try:
         # Get current user
         current_user_id = get_jwt_identity()
+        current_user = auth_service.get_current_user(current_user_id)
+        
+        # Check permission - admin or super_admin
+        if not auth_service.check_permission(current_user, 'admin'):
+            return jsonify(error_schema.dump({
+                'error': 'forbidden',
+                'message': 'Only administrators can edit playbook files'
+            })), 403
         
         # Get content from request
         data = request.get_json()

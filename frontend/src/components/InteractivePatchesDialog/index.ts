@@ -1,0 +1,1 @@
+export { InteractivePatchesDialog } from './InteractivePatchesDialog';

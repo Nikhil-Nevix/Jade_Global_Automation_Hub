@@ -3,6 +3,7 @@ Celery Tasks
 Defines async tasks for job execution
 """
 import os
+import time
 from celery import Task
 from celery.exceptions import Terminated, SoftTimeLimitExceeded
 from app.extensions import celery, db
@@ -63,6 +64,11 @@ def execute_playbook_task(self, job_id):
         if job.extra_vars:
             extra_vars.update(job.extra_vars)
         
+        # Add job_id and backend_url for interactive playbooks
+        from flask import current_app
+        extra_vars['job_id'] = job.job_id
+        extra_vars['backend_url'] = current_app.config.get('BACKEND_URL', 'http://0.0.0.0:5000')
+        
         # Get SSH key path if exists
         private_key_path = server.ssh_key_path if server.ssh_key_path else None
         
@@ -76,14 +82,34 @@ def execute_playbook_task(self, job_id):
             working_dir = None
             playbook_path = playbook.file_path
         
-        # Execute playbook
-        runner = ansible_runner_instance.run_playbook(
+        # Execute playbook in async mode for cancellability
+        thread, runner = ansible_runner_instance.run_playbook(
             playbook_path=playbook_path,
             inventory=inventory,
             extra_vars=extra_vars,
             private_key_path=private_key_path,
-            working_dir=working_dir
+            working_dir=working_dir,
+            async_mode=True
         )
+        
+        # Poll for completion while checking for cancellation
+        while thread.is_alive():
+            # Check if job was cancelled in database
+            db.session.expire(job)  # Refresh from DB
+            current_job = Job.query.get(job_id)
+            
+            if current_job and current_job.status == 'cancelled':
+                # Job was cancelled - stop the runner
+                ansible_runner_instance.cancel_runner(runner)
+                thread.join(timeout=5)  # Wait for thread to finish
+                
+                raise Terminated("Job cancelled by user during execution")
+            
+            # Sleep briefly before next check
+            time.sleep(0.5)
+        
+        # Wait for thread to complete
+        thread.join()
         
         # Parse output
         parsed_output = ansible_runner_instance.parse_runner_output(runner)
@@ -368,6 +394,19 @@ def execute_batch_job_task(self, parent_job_id):
             # Execute one by one
             results = []
             for child_job in child_jobs:
+                # Check if parent was cancelled
+                db.session.expire(parent_job)
+                current_parent = Job.query.get(parent_job_id)
+                if current_parent and current_parent.status == 'cancelled':
+                    # Cancel remaining jobs
+                    for remaining in child_jobs[len(results):]:
+                        job_service.update_job_status(
+                            remaining.id,
+                            'cancelled',
+                            error_message='Cancelled due to parent batch job cancellation'
+                        )
+                    raise Terminated("Batch job cancelled by user")
+                
                 try:
                     # Execute this child job synchronously
                     result = execute_playbook_task.apply(args=[child_job.id])
@@ -396,6 +435,19 @@ def execute_batch_job_task(self, parent_job_id):
                 # Execute in batches
                 results = []
                 for i in range(0, len(child_job_ids), concurrent_limit):
+                    # Check if parent was cancelled
+                    db.session.expire(parent_job)
+                    current_parent = Job.query.get(parent_job_id)
+                    if current_parent and current_parent.status == 'cancelled':
+                        # Cancel remaining jobs
+                        for job_id in child_job_ids[i:]:
+                            job_service.update_job_status(
+                                job_id,
+                                'cancelled',
+                                error_message='Cancelled due to parent batch job cancellation'
+                            )
+                        raise Terminated("Batch job cancelled by user")
+                    
                     batch = child_job_ids[i:i+concurrent_limit]
                     
                     # Create a group for this batch
@@ -481,7 +533,7 @@ def execute_batch_job_task(self, parent_job_id):
                 'cancelled',
                 error_message="Batch job was terminated by user"
             )
-            # Cancel all pending child jobs
+            # Cancel all pending/running child jobs
             child_jobs = job_service.get_child_jobs(parent_job_id)
             for child in child_jobs:
                 if child.status in ['pending', 'running']:
@@ -490,6 +542,9 @@ def execute_batch_job_task(self, parent_job_id):
                         'cancelled',
                         error_message="Cancelled due to parent batch job termination"
                     )
+                    # Revoke the celery task if it's running
+                    if child.celery_task_id:
+                        celery.control.revoke(child.celery_task_id, terminate=True, signal='SIGKILL')
         except Exception:
             pass
         
@@ -514,3 +569,41 @@ def execute_batch_job_task(self, parent_job_id):
             db.session.remove()
         except Exception:
             pass
+
+
+def cancel_job(job_id):
+    """
+    Cancel a running job by its job_id (UUID)
+    
+    Args:
+        job_id: Job UUID string
+    """
+    try:
+        # Get job by job_id (UUID)
+        job = Job.query.filter_by(job_id=job_id).first()
+        if not job:
+            raise Exception(f"Job {job_id} not found")
+        
+        # Revoke Celery task if it has one
+        if job.celery_task_id:
+            celery.control.revoke(job.celery_task_id, terminate=True, signal='SIGKILL')
+        
+        # Update job status
+        job_service.update_job_status(
+            job.id,
+            'cancelled',
+            error_message="Job cancelled due to timeout - no user response"
+        )
+        
+        # Add cancellation log
+        job_service.add_job_log(
+            job.id,
+            1,
+            f"Job cancelled at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} - User did not respond to interactive prompt within timeout period",
+            log_level='WARNING'
+        )
+        
+        return True
+        
+    except Exception as e:
+        raise Exception(f"Failed to cancel job: {str(e)}")

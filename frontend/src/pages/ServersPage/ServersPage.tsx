@@ -8,6 +8,7 @@ import { Plus, Search, Edit, Trash2, CheckCircle, XCircle, RefreshCw, X, Info } 
 import { serversApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
+import { getUserTimezone } from '../../utils/timezone';
 import type { Server, ServerCreateRequest } from '../../types';
 
 export const ServersPage: React.FC = () => {
@@ -88,7 +89,7 @@ export const ServersPage: React.FC = () => {
   const loadServers = async () => {
     try {
       setLoading(true);
-      const response = await serversApi.list({ per_page: 100 });
+      const response = await serversApi.list({ is_active: true, per_page: 100 });
       setServers(response.items);
     } catch (error) {
       console.error('Failed to load servers:', error);
@@ -164,16 +165,16 @@ export const ServersPage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this server?')) {
+    if (!confirm('Are you sure you want to delete this server? This will permanently remove it from the database.')) {
       return;
     }
 
     try {
       await serversApi.delete(id);
       addNotification('success', 'Server deleted successfully');
-      loadServers();
+      await loadServers();
     } catch (error: any) {
-      addNotification('error', error.response?.data?.error || 'Delete failed');
+      addNotification('error', error.response?.data?.message || error.response?.data?.error || 'Delete failed');
     }
   };
 

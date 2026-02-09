@@ -131,6 +131,7 @@ class Job(db.Model):
     celery_task_id = db.Column(db.String(255), nullable=True, index=True)
     extra_vars = db.Column(db.JSON, nullable=True)  # Runtime variables
     error_message = db.Column(db.Text, nullable=True)
+    patch_report = db.Column(db.Text, nullable=True)  # CSV: Package,Old Version,New Version,Status
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

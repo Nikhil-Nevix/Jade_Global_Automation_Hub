@@ -169,6 +169,7 @@ export interface Job {
   celery_task_id?: string;
   extra_vars?: Record<string, any>;
   error_message?: string;
+  patch_report?: string;
   started_at?: string;
   completed_at?: string;
   created_at: string;

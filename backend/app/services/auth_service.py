@@ -212,7 +212,12 @@ class AuthService:
         Returns:
             Boolean indicating if user has permission
         """
-        role_hierarchy = {'user': 1, 'admin': 2, 'super_admin': 3}
+        role_hierarchy = {
+            'user': 1, 
+            'operator': 2,
+            'admin': 3, 
+            'super_admin': 4
+        }
         user_level = role_hierarchy.get(user.role, 0)
         required_level = role_hierarchy.get(required_role, 99)
         

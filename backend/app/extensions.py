@@ -7,6 +7,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flask_marshmallow import Marshmallow
+from flask_socketio import SocketIO
 from celery import Celery
 import redis
 
@@ -16,6 +17,7 @@ migrate = Migrate()
 jwt = JWTManager()
 cors = CORS()
 ma = Marshmallow()
+socketio = SocketIO()
 
 # Redis client for direct access if needed
 redis_client = None
@@ -48,6 +50,15 @@ def init_extensions(app):
             "supports_credentials": app.config['CORS_SUPPORTS_CREDENTIALS'],
             "expose_headers": ["Content-Type", "Authorization"]
         }}
+    )
+    
+    # SocketIO - Real-time communication
+    socketio.init_app(
+        app,
+        cors_allowed_origins=app.config['CORS_ORIGINS'],
+        async_mode='threading',
+        logger=True,
+        engineio_logger=True
     )
     
     # Marshmallow

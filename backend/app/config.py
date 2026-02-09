@@ -37,6 +37,9 @@ class Config:
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
     CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
     
+    # Backend URL for callbacks from Ansible playbooks
+    BACKEND_URL = os.getenv('BACKEND_URL', 'http://0.0.0.0:5000')
+    
     # File Storage (Linux-compatible paths)
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', '/var/lib/infra-automation/playbooks')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size

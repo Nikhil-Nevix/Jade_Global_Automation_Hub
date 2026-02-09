@@ -171,7 +171,9 @@ export const serversApi = {
   },
 
   delete: async (id: number): Promise<void> => {
-    await axiosInstance.delete(`/servers/${id}`);
+    await axiosInstance.delete(`/servers/${id}`, {
+      params: { hard: 'true' }
+    });
   },
 
   testConnection: async (id: number): Promise<{ success: boolean; message: string }> => {
@@ -411,6 +413,14 @@ export const jobsApi = {
 
   getChildJobs: async (parentJobId: number): Promise<ChildJobsResponse> => {
     const response = await axiosInstance.get<ChildJobsResponse>(`/jobs/${parentJobId}/children`);
+    return response.data;
+  },
+
+  // Patch report download
+  downloadPatchReport: async (jobId: number): Promise<string> => {
+    const response = await axiosInstance.get(`/jobs/${jobId}/patch-report`, {
+      responseType: 'text',
+    });
     return response.data;
   },
 };

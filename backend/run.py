@@ -1,6 +1,6 @@
 """
 Application Entry Point
-Runs the Flask development server
+Runs the Flask development server with WebSocket support
 """
 import os
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import create_app
-from app.extensions import celery
+from app.extensions import celery, socketio
 
 # Create Flask app
 app = create_app()
@@ -24,5 +24,5 @@ if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
     
-    # Run development server
-    app.run(host=host, port=port, debug=debug)
+    # Run development server with WebSocket support
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)

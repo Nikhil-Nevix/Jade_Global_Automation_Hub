@@ -60,12 +60,6 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'user'],
   },
   {
-    name: 'Patch Management',
-    path: '/patch-management',
-    icon: Download,
-    roles: ['super_admin', 'admin'],
-  },
-  {
     name: 'User Management',
     path: '/users',
     icon: Users,

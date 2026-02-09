@@ -1,0 +1,111 @@
+---
+# Interactive Patch Installation Playbook
+# This playbook demonstrates the interactive playbook system
+# It scans for available patches, sends them to the user for selection,
+# and installs only the selected patches
+
+- name: Interactive Patch Installation
+  hosts: all
+  gather_facts: yes
+  vars:
+    wait_timeout_seconds: 3600  # 1 hour timeout for user response
+    job_id: ""  # Will be provided by the system
+    backend_url: ""  # Will be provided by the system
+  
+  tasks:
+    - name: Check for available patches (Debian/Ubuntu)
+      shell: apt list --upgradable 2>/dev/null | grep -v "Listing..." | awk -F/ '{print $1}'
+      register: available_patches_debian
+      when: ansible_os_family == "Debian"
+      changed_when: false
+      ignore_errors: yes
+    
+    - name: Check for available patches (RedHat/CentOS)
+      shell: yum list updates | tail -n +2 | awk '{print $1}'
+      register: available_patches_redhat
+      when: ansible_os_family == "RedHat"
+      changed_when: false
+      ignore_errors: yes
+    
+    - name: Set patches fact
+      set_fact:
+        patches_list: "{{ available_patches_debian.stdout_lines if ansible_os_family == 'Debian' else available_patches_redhat.stdout_lines }}"
+    
+    - name: Display available patches count
+      debug:
+        msg: "Found {{ patches_list | length }} available patches"
+    
+    - name: Fail if no patches available
+      fail:
+        msg: "No patches available for installation"
+      when: patches_list | length == 0
+    
+    - name: Write available patches to file
+      copy:
+        content: "{{ patches_list | join('\n') }}"
+        dest: "/tmp/available_patches_{{ job_id }}.txt"
+      when: patches_list | length > 0
+    
+    - name: Notify backend that patches are ready
+      uri:
+        url: "{{ backend_url }}/api/jobs/{{ job_id }}/patches-ready"
+        method: POST
+        body_format: json
+        body:
+          file_path: "/tmp/available_patches_{{ job_id }}.txt"
+        headers:
+          Content-Type: "application/json"
+        status_code: 200
+      delegate_to: localhost
+      register: notification_result
+    
+    - name: Wait for user to select patches
+      wait_for:
+        path: "/tmp/selected_patches_{{ job_id }}.txt"
+        timeout: "{{ wait_timeout_seconds }}"
+      register: wait_result
+    
+    - name: Read selected patches
+      slurp:
+        src: "/tmp/selected_patches_{{ job_id }}.txt"
+      register: selected_patches_file
+    
+    - name: Parse selected patches
+      set_fact:
+        selected_patches: "{{ (selected_patches_file.content | b64decode).split('\n') | select('match', '^.+$') | list }}"
+    
+    - name: Display selected patches
+      debug:
+        msg: "Installing {{ selected_patches | length }} selected patches"
+    
+    - name: Install selected patches (Debian/Ubuntu)
+      apt:
+        name: "{{ selected_patches }}"
+        state: latest
+        update_cache: yes
+      when: 
+        - ansible_os_family == "Debian"
+        - selected_patches | length > 0
+      become: yes
+    
+    - name: Install selected patches (RedHat/CentOS)
+      yum:
+        name: "{{ selected_patches }}"
+        state: latest
+      when: 
+        - ansible_os_family == "RedHat"
+        - selected_patches | length > 0
+      become: yes
+    
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/available_patches_{{ job_id }}.txt"
+        - "/tmp/selected_patches_{{ job_id }}.txt"
+      ignore_errors: yes
+    
+    - name: Installation complete
+      debug:
+        msg: "Successfully installed {{ selected_patches | length }} patches"

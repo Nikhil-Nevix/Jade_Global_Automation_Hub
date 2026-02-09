@@ -51,7 +51,7 @@ export const JobsPage: React.FC = () => {
 
   const loadServers = async () => {
     try {
-      const response = await serversApi.list({ per_page: 100 });
+      const response = await serversApi.list({ is_active: true, per_page: 100 });
       setServers(response.items);
     } catch (error) {
       console.error('Failed to load servers:', error);
