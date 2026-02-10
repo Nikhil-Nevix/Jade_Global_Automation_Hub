@@ -791,7 +791,7 @@ export const JobDetailsPage: React.FC = () => {
           </button>
         )}
         {/* View RPM CSV Button - Only for check.yml playbook */}
-        {job.status === 'success' && !job.is_batch_job && job.playbook?.name?.toLowerCase().endsWith('check.yml') && (
+        {job.status === 'success' && !job.is_batch_job && job.playbook?.name?.toLowerCase().startsWith('check') && (
           <button
             onClick={loadRpmCsv}
             disabled={loadingRpmCsv}
