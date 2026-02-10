@@ -529,27 +529,9 @@ export const PlaybooksPage: React.FC = () => {
                         )}
                       </h3>
                       
-                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
                         {playbook.description || 'No description provided'}
                       </p>
-                      
-                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-500 font-mono bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded">
-                        {playbook.is_folder ? (
-                          <>
-                            <Package className="h-3.5 w-3.5" />
-                            <span className="truncate" title={playbook.main_playbook_file}>
-                              {playbook.main_playbook_file || 'site.yml'}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="h-3.5 w-3.5" />
-                            <span className="truncate" title={playbook.file_path}>
-                              {playbook.file_path}
-                            </span>
-                          </>
-                        )}
-                      </div>
                     </div>
 
                     {/* Card Footer with Actions */}
@@ -647,9 +629,6 @@ export const PlaybooksPage: React.FC = () => {
                     Description
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    File Path
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                     Created
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
@@ -663,7 +642,7 @@ export const PlaybooksPage: React.FC = () => {
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredPlaybooks.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">
+                    <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">
                       No playbooks found
                     </td>
                   </tr>
@@ -692,11 +671,6 @@ export const PlaybooksPage: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
                           {playbook.description || 'No description'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-xs text-gray-600 dark:text-gray-400 font-mono max-w-[200px] truncate" title={playbook.file_path}>
-                          {playbook.file_path}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
