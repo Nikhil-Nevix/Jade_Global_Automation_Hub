@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Server, FileCode, Clock, CheckCircle, XCircle, AlertCircle, Plus, 
   Download, RefreshCw, Calendar, TrendingUp, BarChart3, AlertTriangle
@@ -34,6 +34,7 @@ interface AnalyticsData {
 }
 
 export const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<JobStatistics | null>(null);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [serverCount, setServerCount] = useState(0);
@@ -42,10 +43,19 @@ export const Dashboard: React.FC = () => {
   const [servers, setServers] = useState<ServerType[]>([]);
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   
+  // Compliance data state
+  const [complianceData, setComplianceData] = useState<{compliant: number, nonCompliant: number} | null>(null);
+  const [complianceJobId, setComplianceJobId] = useState<number | null>(null);
+  
+  // Network Device Compliance data state
+  const [networkDeviceComplianceData, setNetworkDeviceComplianceData] = useState<Record<string, number> | null>(null);
+  const [networkDeviceComplianceJobId, setNetworkDeviceComplianceJobId] = useState<number | null>(null);
+  
   // Chart management state
   const [charts, setCharts] = useState<ChartConfig[]>([
     { id: '1', metric: 'job-status', chartType: 'bar', timeRange: 'all' },
-    { id: '2', metric: 'job-success-rate', chartType: 'pie', timeRange: 'all' },
+    { id: '2', metric: 'compliance-status', chartType: 'pie', timeRange: 'all' },
+    { id: '3', metric: 'network-device-compliance', chartType: 'pie', timeRange: 'all' },
   ]);
   const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>('30days');
   
@@ -63,6 +73,14 @@ export const Dashboard: React.FC = () => {
     loadAnalyticsData();
   }, []);
 
+  // Load compliance data after allJobs is populated
+  useEffect(() => {
+    if (allJobs.length > 0) {
+      loadComplianceData();
+      loadNetworkDeviceComplianceData();
+    }
+  }, [allJobs]);
+
   // Auto-refresh every 30 seconds
   useEffect(() => {
     if (!autoRefresh) return;
@@ -70,6 +88,7 @@ export const Dashboard: React.FC = () => {
     const interval = setInterval(() => {
       loadDashboardData();
       loadAnalyticsData();
+      // loadComplianceData will be triggered automatically via useEffect when allJobs updates
     }, 30000); // 30 seconds
     
     return () => clearInterval(interval);
@@ -135,6 +154,170 @@ export const Dashboard: React.FC = () => {
       console.error('Failed to load analytics data:', error);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+
+  const loadComplianceData = async () => {
+    try {
+      console.log('🔍 Loading compliance data...');
+      console.log('📊 Total jobs available:', allJobs.length);
+      
+      // ⚠️ HARDCODED JOB ID - Change this to use a different job's compliance data
+      const targetJobId = '7a83723d-7444-4f71-8a03-5c53e3a4ac31';
+      const targetJob = allJobs.find(job => job.job_id === targetJobId);
+      
+      console.log('🎯 Looking for job with job_id:', targetJobId);
+      
+      if (!targetJob) {
+        console.log('⚠️ Target job not found - setting compliance data to null');
+        console.log('Available job IDs:', allJobs.map(j => j.job_id).slice(0, 5));
+        setComplianceData(null);
+        return;
+      }
+      
+      console.log('✅ Found target job:', {
+        id: targetJob.id,
+        job_id: targetJob.job_id,
+        playbook: targetJob.playbook?.name,
+        status: targetJob.status,
+        created_at: targetJob.created_at
+      });
+      
+      // Fetch CSV data for this job
+      console.log('📥 Fetching CSV data for job ID:', targetJob.id);
+      const csvData = await jobsApi.getRpmCsv(targetJob.id);
+      console.log('📊 CSV data received:', {
+        headers: csvData.headers,
+        rowCount: csvData.data.length
+      });
+      
+      // Find LAG column index
+      const lagColumnIndex = csvData.headers.findIndex(h => h.toUpperCase() === 'LAG');
+      console.log('🔢 LAG column index:', lagColumnIndex);
+      
+      if (lagColumnIndex === -1) {
+        console.log('⚠️ LAG column not found in CSV');
+        setComplianceData(null);
+        return;
+      }
+      
+      // Calculate compliance
+      let compliant = 0;
+      let nonCompliant = 0;
+      
+      csvData.data.forEach((row, idx) => {
+        const lagValue = row[lagColumnIndex] || '';
+        // Compliant if LAG is 0 or empty
+        if (!lagValue || lagValue.trim() === '' || lagValue.trim() === '0') {
+          compliant++;
+          if (idx < 3) console.log(`Row ${idx}: LAG="${lagValue}" → COMPLIANT`);
+        } else {
+          // Everything else (including N-1, N-2, etc.) is non-compliant
+          nonCompliant++;
+          if (idx < 3) console.log(`Row ${idx}: LAG="${lagValue}" → NON-COMPLIANT`);
+        }
+      });
+      
+      console.log('✅ Compliance calculation complete:', { compliant, nonCompliant });
+      setComplianceData({ compliant, nonCompliant });
+      setComplianceJobId(targetJob.id);
+    } catch (error) {
+      console.error('❌ Failed to load compliance data:', error);
+      setComplianceData(null);
+      setComplianceJobId(null);
+    }
+  };
+
+  const loadNetworkDeviceComplianceData = async () => {
+    try {
+      console.log('🔍 Loading network device compliance data...');
+      console.log('📊 Total jobs available:', allJobs.length);
+      
+      // ⚠️ HARDCODED JOB ID - Change this to use a different job's compliance data
+      const targetJobId = 'c79b5646-97cc-40c5-a94a-a341bf26cb5b';
+      const targetJob = allJobs.find(job => job.job_id === targetJobId);
+      
+      console.log('🎯 Looking for job with job_id:', targetJobId);
+      
+      if (!targetJob) {
+        console.log('⚠️ Target job not found - setting network device compliance data to null');
+        console.log('Available job IDs:', allJobs.map(j => j.job_id).slice(0, 5));
+        setNetworkDeviceComplianceData(null);
+        return;
+      }
+      
+      console.log('✅ Found target job:', {
+        id: targetJob.id,
+        job_id: targetJob.job_id,
+        playbook: targetJob.playbook?.name,
+        status: targetJob.status,
+        created_at: targetJob.created_at
+      });
+      
+      // Fetch generated files for this job
+      console.log('📥 Fetching generated files for job ID:', targetJob.id);
+      const filesResponse = await jobsApi.getGeneratedFiles(targetJob.id);
+      const files = filesResponse.files || [];
+      console.log('📊 Generated files received:', files.length, 'files');
+      
+      if (files.length === 0) {
+        console.log('⚠️ No generated files found for this job');
+        setNetworkDeviceComplianceData(null);
+        return;
+      }
+      
+      console.log('📁 Available files:', files.map((f: any) => f.filename).join(', '));
+      
+      // Find CSV file
+      const csvFile = files.find((f: any) => f.type === 'csv' && f.filename.includes('Firmware_Compliance'));
+      if (!csvFile) {
+        console.log('⚠️ No compliance CSV file found in generated files');
+        console.log('Available files:', files.map((f: any) => f.filename));
+        setNetworkDeviceComplianceData(null);
+        return;
+      }
+      
+      console.log('📄 Found CSV file:', csvFile.filename);
+      
+      // Download and parse the CSV file (use 'view' action to get structured data)
+      const fileContent = await jobsApi.downloadGeneratedFile(targetJob.id, csvFile.path, 'view');
+      console.log('📥 CSV file content received:', fileContent);
+      
+      // Find Compliance Status column and count values
+      const complianceStatusCounts: Record<string, number> = {};
+      
+      if (fileContent.headers && fileContent.data) {
+        const complianceColIndex = fileContent.headers.findIndex((h: string) => 
+          h.toUpperCase() === 'COMPLIANCE STATUS'
+        );
+        
+        if (complianceColIndex === -1) {
+          console.log('⚠️ Compliance Status column not found in CSV');
+          console.log('Available headers:', fileContent.headers);
+          setNetworkDeviceComplianceData(null);
+          return;
+        }
+        
+        console.log('🔢 Compliance Status column index:', complianceColIndex);
+        console.log('📊 Total rows to process:', fileContent.data.length);
+        
+        // Count each unique compliance status
+        fileContent.data.forEach((row: string[], idx: number) => {
+          const status = row[complianceColIndex] || 'Unknown';
+          complianceStatusCounts[status] = (complianceStatusCounts[status] || 0) + 1;
+          if (idx < 5) console.log(`Row ${idx}: Status="${status}"`);
+        });
+      } else {
+        console.log('⚠️ File content structure unexpected:', fileContent);
+      }
+      
+      console.log('✅ Network device compliance calculation complete:', complianceStatusCounts);
+      setNetworkDeviceComplianceData(complianceStatusCounts);
+      setNetworkDeviceComplianceJobId(targetJob.id);
+    } catch (error) {
+      console.error('❌ Failed to load network device compliance data:', error);
+      setNetworkDeviceComplianceData(null);
+      setNetworkDeviceComplianceJobId(null);
     }
   };
 
@@ -312,9 +495,28 @@ export const Dashboard: React.FC = () => {
       value,
     }));
 
+    // Compliance Status Data
+    console.log('📊 Preparing compliance chart data:', complianceData);
+    const complianceStatusData = complianceData && (complianceData.compliant > 0 || complianceData.nonCompliant > 0)
+      ? [
+          { name: 'Compliant', value: complianceData.compliant },
+          { name: 'Non-Compliant', value: complianceData.nonCompliant },
+        ]
+      : [{ name: 'No Data', value: 1 }];
+    console.log('📈 Compliance chart data:', complianceStatusData);
+
+    // Network Device Compliance Status Data
+    console.log('📊 Preparing network device compliance chart data:', networkDeviceComplianceData);
+    const networkDeviceComplianceStatusData = networkDeviceComplianceData && Object.keys(networkDeviceComplianceData).length > 0
+      ? Object.entries(networkDeviceComplianceData).map(([name, value]) => ({ name, value }))
+      : [{ name: 'No Data', value: 1 }];
+    console.log('📈 Network device compliance chart data:', networkDeviceComplianceStatusData);
+
     return {
       'job-status': jobStatusData,
-      'job-success-rate': jobSuccessRateData,
+      'job-success-rate': jobStatusData,
+      'compliance-status': complianceStatusData,
+      'network-device-compliance': networkDeviceComplianceStatusData,
       'server-os-distribution': serverOsData,
       'server-status': serverStatusData,
       'server-environment': serverEnvironmentData,
@@ -769,20 +971,39 @@ export const Dashboard: React.FC = () => {
           
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {charts.map((chart) => (
-              <DynamicChart
-                key={chart.id}
-                chartId={chart.id}
-                initialMetric={chart.metric}
-                initialChartType={chart.chartType}
-                initialTimeRange={chart.timeRange}
-                data={prepareChartData(chart.timeRange)}
-                onRemove={handleRemoveChart}
-                onMetricChange={handleMetricChange}
-                onChartTypeChange={handleChartTypeChange}
-                onTimeRangeChange={handleTimeRangeChange}
-              />
-            ))}
+            {charts.map((chart) => {
+              const chartData = prepareChartData(chart.timeRange);
+              if (chart.metric === 'compliance-status') {
+                console.log('🎨 Rendering compliance chart with data:', chartData['compliance-status']);
+              }
+              if (chart.metric === 'network-device-compliance') {
+                console.log('🎨 Rendering network device compliance chart with data:', chartData['network-device-compliance']);
+              }
+              
+              // Determine click handler based on metric
+              let clickHandler = undefined;
+              if (chart.metric === 'compliance-status' && complianceJobId) {
+                clickHandler = () => navigate(`/jobs/${complianceJobId}`);
+              } else if (chart.metric === 'network-device-compliance' && networkDeviceComplianceJobId) {
+                clickHandler = () => navigate(`/jobs/${networkDeviceComplianceJobId}`);
+              }
+              
+              return (
+                <DynamicChart
+                  key={`${chart.id}-${complianceData ? 'loaded' : 'empty'}-${networkDeviceComplianceData ? 'loaded' : 'empty'}`}
+                  chartId={chart.id}
+                  initialMetric={chart.metric}
+                  initialChartType={chart.chartType}
+                  initialTimeRange={chart.timeRange}
+                  data={chartData}
+                  onRemove={handleRemoveChart}
+                  onMetricChange={handleMetricChange}
+                  onChartTypeChange={handleChartTypeChange}
+                  onTimeRangeChange={handleTimeRangeChange}
+                  onChartClick={clickHandler}
+                />
+              );
+            })}
           </div>
 
           {charts.length === 0 && (

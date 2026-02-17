@@ -8,7 +8,7 @@
   hosts: all
   gather_facts: yes
   vars:
-    wait_timeout_seconds: 3600  # 1 hour timeout for user response
+    wait_timeout_seconds: 30  # 1 hour timeout for user response
     job_id: ""  # Will be provided by the system
     backend_url: ""  # Will be provided by the system
   

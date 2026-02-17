@@ -65,6 +65,25 @@ export const JobDetailsPage: React.FC = () => {
   const [loadingRpmCsv, setLoadingRpmCsv] = useState(false);
   const [csvSearchQuery, setCsvSearchQuery] = useState('');
   const [csvSortConfig, setCsvSortConfig] = useState<{columnIndex: number, direction: 'asc' | 'desc'} | null>(null);
+  
+  // Generated files state
+  const [generatedFiles, setGeneratedFiles] = useState<Array<{
+    path: string;
+    filename: string;
+    size: number;
+    size_formatted: string;
+    type: string;
+    extension: string;
+  }>>([]);
+  const [showGeneratedFiles, setShowGeneratedFiles] = useState(false);
+  const [loadingGeneratedFiles, setLoadingGeneratedFiles] = useState(false);
+  const [viewingFile, setViewingFile] = useState<{
+    filename: string;
+    type: string;
+    headers?: string[];
+    data?: string[][];
+    content?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -260,19 +279,28 @@ export const JobDetailsPage: React.FC = () => {
 
   const loadJobDetails = async () => {
     try {
+      console.log('🔍 Loading job details for ID:', id);
       setLoading(true);
       const jobData = await jobsApi.get(Number(id));
+      console.log('📊 Job data loaded:', {
+        id: jobData.id,
+        job_id: jobData.job_id,
+        status: jobData.status,
+        is_batch_job: jobData.is_batch_job
+      });
       setJob(jobData);
       
       // Load child jobs if this is a batch job
       if (jobData.is_batch_job) {
+        console.log('📦 Loading child jobs for batch job');
         await loadChildJobs();
       } else {
         // Only load logs for non-batch jobs
+        console.log('📝 Loading logs for regular job');
         await loadLogs();
       }
     } catch (error: any) {
-      console.error('Failed to load job:', error);
+      console.error('❌ Failed to load job:', error);
       addNotification('error', 'Failed to load job details');
     } finally {
       setLoading(false);
@@ -294,14 +322,20 @@ export const JobDetailsPage: React.FC = () => {
 
   const loadLogs = async () => {
     try {
+      console.log('🔍 Loading logs for job ID:', id);
       const logsData = await jobsApi.getLogs(Number(id), 0, 1000);
+      console.log('📊 Logs received:', {
+        totalLogs: logsData.logs?.length || 0,
+        firstFewLogs: logsData.logs?.slice(0, 3)
+      });
       setLogs(logsData.logs);
 
       // Refresh job status
       const jobData = await jobsApi.get(Number(id));
       setJob(jobData);
+      console.log('✅ Logs and job data loaded successfully');
     } catch (error) {
-      console.error('Failed to load logs:', error);
+      console.error('❌ Failed to load logs:', error);
     }
   };
 
@@ -329,6 +363,48 @@ export const JobDetailsPage: React.FC = () => {
       }
     } finally {
       setLoadingRpmCsv(false);
+    }
+  };
+
+  const loadGeneratedFiles = async () => {
+    if (!id) return;
+    
+    setLoadingGeneratedFiles(true);
+    setViewingFile(null); // Reset viewing file
+    
+    try {
+      const response = await jobsApi.getGeneratedFiles(Number(id));
+      setGeneratedFiles(response.files);
+      setShowGeneratedFiles(true);
+      
+      if (response.files.length === 0) {
+        addNotification('info', 'No report files found for this job');
+      } else {
+        // Auto-view the first file
+        await handleViewFile(response.files[0].path);
+      }
+    } catch (error: any) {
+      addNotification('error', error.response?.data?.message || 'Failed to load report');
+    } finally {
+      setLoadingGeneratedFiles(false);
+    }
+  };
+
+  const handleViewFile = async (filePath: string) => {
+    try {
+      const response = await jobsApi.downloadGeneratedFile(Number(id), filePath, 'view');
+      setViewingFile(response);
+    } catch (error: any) {
+      addNotification('error', error.response?.data?.message || 'Failed to view file');
+    }
+  };
+
+  const handleDownloadFile = async (filePath: string) => {
+    try {
+      await jobsApi.downloadGeneratedFile(Number(id), filePath, 'download');
+      addNotification('success', 'File downloaded successfully');
+    } catch (error: any) {
+      addNotification('error', error.response?.data?.message || 'Failed to download file');
     }
   };
 
@@ -364,6 +440,24 @@ export const JobDetailsPage: React.FC = () => {
   };
 
   // CSV Helper Functions
+  const isCompliant = (lagValue: string): boolean => {
+    // If LAG is "0" or empty → Compliant (Yes)
+    // If LAG contains "N-" (N-1, N-2, etc.) → Non-Compliant (No)
+    if (!lagValue || lagValue.trim() === '' || lagValue.trim() === '0') return true;
+    if (lagValue.toUpperCase().includes('N-')) return false;
+    return true;
+  };
+
+  const getLagColumnIndex = (): number => {
+    if (!rpmCsvData) return -1;
+    return rpmCsvData.headers.findIndex(h => h.toUpperCase() === 'LAG');
+  };
+
+  const getHostColumnIndex = (): number => {
+    if (!rpmCsvData) return -1;
+    return rpmCsvData.headers.findIndex(h => h.toUpperCase() === 'HOST');
+  };
+
   const handleCsvSort = (columnIndex: number) => {
     setCsvSortConfig((prevConfig) => {
       if (prevConfig?.columnIndex === columnIndex) {
@@ -417,12 +511,24 @@ export const JobDetailsPage: React.FC = () => {
   const handleDownloadCsv = () => {
     if (!rpmCsvData) return;
 
-    // Create CSV content
+    const lagColIndex = getLagColumnIndex();
+    const hostColIndex = getHostColumnIndex();
+    const serverIp = job?.server?.ip_address;
+
+    // Create CSV content with COMPLIANT column and IP address in HOST column
     const csvContent = [
-      rpmCsvData.headers.join(','),
-      ...getFilteredAndSortedCsvData().map(row => 
-        row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')
-      )
+      [...rpmCsvData.headers, 'COMPLIANT'].join(','),
+      ...getFilteredAndSortedCsvData().map(row => {
+        const lagValue = lagColIndex >= 0 ? row[lagColIndex] : '';
+        const compliantValue = isCompliant(lagValue) ? 'Yes' : 'No';
+        
+        // Replace hostname with IP in HOST column
+        const updatedRow = row.map((cell, index) => 
+          index === hostColIndex && serverIp ? serverIp : cell
+        );
+        
+        return [...updatedRow, compliantValue].map(cell => `"${cell.replace(/"/g, '""')}"`).join(',');
+      })
     ].join('\n');
 
     // Download
@@ -801,6 +907,17 @@ export const JobDetailsPage: React.FC = () => {
             {loadingRpmCsv ? 'Loading...' : (showRpmCsv ? 'Reload RPM CSV' : 'View RPM Upgrades')}
           </button>
         )}
+        {/* View Report Button - For all successful jobs except check.yml */}
+        {job.status === 'success' && !job.is_batch_job && !job.playbook?.name?.toLowerCase().startsWith('check') && (
+          <button
+            onClick={loadGeneratedFiles}
+            disabled={loadingGeneratedFiles}
+            className="flex items-center gap-2 px-4 py-2 bg-success-500 hover:bg-success-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FileText className="h-4 w-4" />
+            {loadingGeneratedFiles ? 'Loading...' : 'View Report'}
+          </button>
+        )}
         {/* View Console Output Button - Only for non-batch jobs */}
         {!job.is_batch_job && (
           <button
@@ -958,7 +1075,7 @@ export const JobDetailsPage: React.FC = () => {
                     <th
                       key={index}
                       onClick={() => handleCsvSort(index)}
-                      className="px-6 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none border-r border-gray-500 last:border-r-0"
+                      className="px-6 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none border-r border-gray-500"
                     >
                       <div className="flex items-center gap-2">
                         <span>{header}</span>
@@ -972,29 +1089,53 @@ export const JobDetailsPage: React.FC = () => {
                       </div>
                     </th>
                   ))}
+                  {/* COMPLIANT Column */}
+                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wider border-r-0">
+                    <div className="flex items-center gap-2">
+                      <span>COMPLIANT</span>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-500">
                 {getFilteredAndSortedCsvData().length > 0 ? (
-                  getFilteredAndSortedCsvData().map((row, rowIndex) => (
-                    <tr 
-                      key={rowIndex} 
-                      className={`hover:bg-purple-50 transition-colors border-b border-gray-500 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                    >
-                      {row.map((cell, cellIndex) => (
-                        <td
-                          key={cellIndex}
-                          className="px-6 py-4 text-sm text-gray-900 border-r border-gray-500 last:border-r-0"
-                        >
-                          {cell}
+                  getFilteredAndSortedCsvData().map((row, rowIndex) => {
+                    const lagColIndex = getLagColumnIndex();
+                    const hostColIndex = getHostColumnIndex();
+                    const lagValue = lagColIndex >= 0 ? row[lagColIndex] : '';
+                    const compliant = isCompliant(lagValue);
+                    
+                    return (
+                      <tr 
+                        key={rowIndex} 
+                        className={`hover:bg-purple-50 transition-colors border-b border-gray-500 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                      >
+                        {row.map((cell, cellIndex) => (
+                          <td
+                            key={cellIndex}
+                            className="px-6 py-4 text-sm text-gray-900 border-r border-gray-500"
+                          >
+                            {/* Display IP address for HOST column, otherwise show cell value */}
+                            {cellIndex === hostColIndex ? (job?.server?.ip_address || cell) : cell}
+                          </td>
+                        ))}
+                        {/* COMPLIANT Column */}
+                        <td className="px-6 py-4 text-sm border-r-0">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            compliant 
+                              ? 'bg-success-100 text-success-800' 
+                              : 'bg-error-100 text-error-800'
+                          }`}>
+                            {compliant ? 'Yes' : 'No'}
+                          </span>
                         </td>
-                      ))}
-                    </tr>
-                  ))
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td 
-                      colSpan={rpmCsvData.headers.length}
+                      colSpan={rpmCsvData.headers.length + 1}
                       className="px-6 py-8 text-center text-sm text-gray-500 border-0"
                     >
                       {csvSearchQuery ? 'No matching rows found' : 'No data available'}
@@ -1018,6 +1159,115 @@ export const JobDetailsPage: React.FC = () => {
               >
                 Clear sorting
               </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Report Viewer */}
+      {showGeneratedFiles && generatedFiles.length > 0 && viewingFile && (
+        <div className="bg-white border border-primary-200 shadow-glow rounded-lg p-6">
+          {/* Header with File Selector and Actions */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3 flex-1">
+              <FileText className="h-5 w-5 text-success-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Report Viewer</h3>
+              
+              {/* File Selector Dropdown */}
+              {generatedFiles.length > 1 && (
+                <div className="relative">
+                  <select
+                    value={generatedFiles.findIndex(f => f.filename === viewingFile.filename)}
+                    onChange={(e) => handleViewFile(generatedFiles[Number(e.target.value)].path)}
+                    className="pl-3 pr-10 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:border-primary-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all cursor-pointer"
+                  >
+                    {generatedFiles.map((file, index) => (
+                      <option key={index} value={index}>
+                        {file.filename} ({file.size_formatted})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              {/* Single file display */}
+              {generatedFiles.length === 1 && (
+                <span className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg font-medium">
+                  {viewingFile.filename}
+                </span>
+              )}
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const currentFile = generatedFiles.find(f => f.filename === viewingFile.filename);
+                  if (currentFile) handleDownloadFile(currentFile.path);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-success-500 hover:bg-success-600 text-white rounded-lg transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => {
+                  setShowGeneratedFiles(false);
+                  setViewingFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* File Content Viewer */}
+          <div>
+
+            {/* CSV View */}
+            {viewingFile.type === 'csv' && viewingFile.headers && viewingFile.data && (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      {viewingFile.headers.map((header, idx) => (
+                        <th
+                          key={idx}
+                          className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {viewingFile.data.slice(0, 100).map((row, rowIdx) => (
+                      <tr key={rowIdx} className="hover:bg-gray-50 transition-colors">
+                        {row.map((cell, cellIdx) => (
+                          <td key={cellIdx} className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {viewingFile.data.length > 100 && (
+                  <div className="px-4 py-3 bg-gray-50 text-xs text-gray-600 text-center border-t border-gray-200">
+                    Showing first 100 rows of {viewingFile.data.length}. Download the full file to see all data.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Text/JSON View */}
+            {viewingFile.type === 'text' && viewingFile.content && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 max-h-96 overflow-auto">
+                <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap">
+                  {viewingFile.content}
+                </pre>
+              </div>
             )}
           </div>
         </div>

@@ -4,7 +4,13 @@
  */
 import { io, Socket } from 'socket.io-client';
 
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://0.0.0.0:5000';
+// Extract base URL from VITE_API_URL (remove /api suffix if present)
+const getBackendUrl = () => {
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://0.0.0.0:5000/api';
+  return apiUrl.replace(/\/api$/, '');
+};
+
+const BACKEND_URL = getBackendUrl();
 
 class WebSocketService {
   private socket: Socket | null = null;

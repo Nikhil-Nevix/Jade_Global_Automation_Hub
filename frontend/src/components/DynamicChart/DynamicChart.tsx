@@ -27,6 +27,8 @@ export type ChartType = 'bar' | 'pie' | 'line' | 'donut' | 'area';
 export type DataMetric =
   | 'job-status'
   | 'job-success-rate'
+  | 'compliance-status'
+  | 'network-device-compliance'
   | 'server-os-distribution'
   | 'server-status'
   | 'server-environment';
@@ -42,6 +44,7 @@ interface DynamicChartProps {
   onMetricChange: (id: string, metric: DataMetric) => void;
   onChartTypeChange: (id: string, type: ChartType) => void;
   onTimeRangeChange: (id: string, timeRange: TimeRange) => void;
+  onChartClick?: () => void;
 }
 
 // Status-specific color mapping to match Job Status Overview (lighter shades)
@@ -51,6 +54,15 @@ const STATUS_COLORS: Record<string, string> = {
   'Success': '#34D399',   // Light Green
   'Failed': '#F87171',    // Light Red/Error
   'Cancelled': '#FBBF24', // Light Orange/Warning
+  'Compliant': '#10B981', // Green for compliant
+  'No Data': '#9CA3AF',   // Gray for no data
+  // Network Device Compliance Status Colors - Very Distinct
+  'Latest': '#10B981',    // GREEN - fully compliant
+  'N-1': '#EAB308',       // YELLOW - one version behind  
+  'N-2': '#F97316',       // Orange - two versions behind
+  'N-3': '#EA580C',       // Dark Orange - three versions behind
+  'Non-Compliant': '#DC2626', // RED - critical non-compliance
+  'Unknown': '#6B7280',   // Gray - unknown status
 };
 
 // Helper function to get color by name
@@ -61,6 +73,8 @@ const getColorByName = (name: string): string => {
 const METRIC_LABELS: Record<DataMetric, string> = {
   'job-status': 'Jobs by Status',
   'job-success-rate': 'Job Success Rate',
+  'compliance-status': 'Patch Compliance Status',
+  'network-device-compliance': 'Network Device Compliance',
   'server-os-distribution': 'Server Distribution by OS',
   'server-status': 'Server Status',
   'server-environment': 'Servers by Environment',
@@ -85,6 +99,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
   onMetricChange,
   onChartTypeChange,
   onTimeRangeChange,
+  onChartClick,
 }) => {
   const [metric, setMetric] = React.useState<DataMetric>(initialMetric);
   const [chartType, setChartType] = React.useState<ChartType>(initialChartType);
@@ -150,7 +165,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
       case 'pie':
         return (
           <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
+            <PieChart onClick={onChartClick} style={{ cursor: onChartClick ? 'pointer' : 'default' }}>
               <defs>
                 {chartData.map((entry: any, index: number) => (
                   <radialGradient key={`gradient-${index}`} id={`pieGradient${index}`}>
@@ -207,7 +222,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
       case 'donut':
         return (
           <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
+            <PieChart onClick={onChartClick} style={{ cursor: onChartClick ? 'pointer' : 'default' }}>
               <defs>
                 {chartData.map((entry: any, index: number) => (
                   <radialGradient key={`donutGradient-${index}`} id={`donutGradient${index}`}>
@@ -361,7 +376,14 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
     }}>
       {/* Chart Header with Controls */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">{METRIC_LABELS[metric]}</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">{METRIC_LABELS[metric]}</h3>
+          {onChartClick && (
+            <p className="text-xs text-primary-600 mt-1">
+              💡 Click chart to view detailed data table
+            </p>
+          )}
+        </div>
         <button
           onClick={() => onRemove(chartId)}
           className="text-gray-400 hover:text-error-500 transition-colors"
@@ -382,6 +404,8 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
           >
             <option value="job-status">Jobs by Status</option>
             <option value="job-success-rate">Job Success Rate</option>
+            <option value="compliance-status">Patch Compliance Status</option>
+            <option value="network-device-compliance">Network Device Compliance</option>
             <option value="server-os-distribution">Server Distribution by OS</option>
             <option value="server-status">Server Status</option>
             <option value="server-environment">Servers by Environment</option>

@@ -435,6 +435,63 @@ export const jobsApi = {
     const response = await axiosInstance.get(`/jobs/${jobId}/rpm-csv`);
     return response.data;
   },
+
+  // Get generated files
+  getGeneratedFiles: async (jobId: number): Promise<{
+    success: boolean;
+    files: Array<{
+      path: string;
+      filename: string;
+      size: number;
+      size_formatted: string;
+      type: 'csv' | 'text' | 'json' | 'markup' | 'excel' | 'pdf' | 'other';
+      extension: string;
+    }>;
+    total: number;
+    message?: string;
+  }> => {
+    const response = await axiosInstance.get(`/jobs/${jobId}/generated-files`);
+    return response.data;
+  },
+
+  // Download or view generated file
+  downloadGeneratedFile: async (
+    jobId: number,
+    filePath: string,
+    action: 'download' | 'view' = 'download'
+  ): Promise<any> => {
+    if (action === 'download') {
+      // For download, get as blob and trigger download
+      const response = await axiosInstance.get(
+        `/jobs/${jobId}/download-file`,
+        {
+          params: { file_path: filePath, action: 'download' },
+          responseType: 'blob',
+        }
+      );
+      
+      // Extract filename from file path
+      const filename = filePath.split('/').pop() || 'download';
+      
+      // Create blob URL and trigger download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, filename };
+    } else {
+      // For view, get structured data
+      const response = await axiosInstance.get(`/jobs/${jobId}/download-file`, {
+        params: { file_path: filePath, action: 'view' },
+      });
+      return response.data;
+    }
+  },
 };
 
 // ===== Tickets API =====
