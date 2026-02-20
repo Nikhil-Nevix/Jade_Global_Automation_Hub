@@ -16,6 +16,7 @@ import {
   History,
   Bell,
   Download,
+  Building2,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -33,6 +34,12 @@ const navItems: NavItem[] = [
     name: 'Dashboard',
     path: '/',
     icon: LayoutDashboard,
+    roles: ['super_admin', 'admin', 'user'],
+  },
+  {
+    name: 'Client Dashboard',
+    path: '/client-dashboard',
+    icon: Building2,
     roles: ['super_admin', 'admin', 'user'],
   },
   {

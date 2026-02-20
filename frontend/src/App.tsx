@@ -13,6 +13,7 @@ import { InteractivePatchesDialog } from './components/InteractivePatchesDialog'
 import { socketService } from './services/socket.service';
 import { LoginPage } from './pages/LoginPage/LoginPage';
 import { Dashboard } from './pages/Dashboard/Dashboard';
+import { ClientDashboard } from './pages/ClientDashboard/ClientDashboard';
 import { ServersPage } from './pages/ServersPage/ServersPage';
 import { PlaybooksPage } from './pages/PlaybooksPage/PlaybooksPage';
 import { PlaybookAuditPage } from './pages/PlaybookAuditPage/PlaybookAuditPage';
@@ -134,6 +135,16 @@ export const App: React.FC = () => {
             <ProtectedRoute>
               <MainLayout>
                 <Dashboard />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/client-dashboard"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ClientDashboard />
               </MainLayout>
             </ProtectedRoute>
           }

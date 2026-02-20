@@ -47,22 +47,27 @@ interface DynamicChartProps {
   onChartClick?: () => void;
 }
 
-// Status-specific color mapping to match Job Status Overview (lighter shades)
+// Bright, professional color palette for enterprise dashboards
 const STATUS_COLORS: Record<string, string> = {
-  'Pending': '#9CA3AF',   // Light Gray
-  'Running': '#60A5FA',   // Light Blue/Info
-  'Success': '#34D399',   // Light Green
-  'Failed': '#F87171',    // Light Red/Error
-  'Cancelled': '#FBBF24', // Light Orange/Warning
-  'Compliant': '#10B981', // Green for compliant
-  'No Data': '#9CA3AF',   // Gray for no data
-  // Network Device Compliance Status Colors - Very Distinct
-  'Latest': '#10B981',    // GREEN - fully compliant
-  'N-1': '#EAB308',       // YELLOW - one version behind  
-  'N-2': '#F97316',       // Orange - two versions behind
-  'N-3': '#EA580C',       // Dark Orange - three versions behind
-  'Non-Compliant': '#DC2626', // RED - critical non-compliance
-  'Unknown': '#6B7280',   // Gray - unknown status
+  'Pending': '#D1D5DB',   // Soft Light Gray
+  'Running': '#93C5FD',   // Bright Sky Blue
+  'Success': '#6EE7B7',   // Bright Mint Green
+  'Failed': '#FCA5A5',    // Soft Coral Red
+  'Cancelled': '#FCD34D', // Bright Sunshine Yellow
+  'Compliant': '#34D399', // Bright Emerald (success)
+  'No Data': '#CBD5E1',   // Soft Slate Gray
+  // Network Device Compliance Status Colors - Bright & Professional
+  'Latest': '#34D399',    // BRIGHT MINT GREEN - fully compliant
+  'N-1': '#FCD34D',       // SUNSHINE YELLOW - one version behind  
+  'N-2': '#FBBF24',       // BRIGHT AMBER - two versions behind
+  'N-3': '#FB923C',       // BRIGHT ORANGE - three versions behind
+  'Non-Compliant': '#F87171', // BRIGHT CORAL RED - critical non-compliance
+  'Unknown': '#94A3B8',   // SOFT SLATE - unknown status
+  // Additional bright colors for variety
+  '0': '#34D399',         // Bright green (no issues)
+  '1': '#FCD34D',         // Bright yellow 
+  '2': '#FB923C',         // Bright orange
+  '3': '#F87171',         // Bright red
 };
 
 // Helper function to get color by name
@@ -133,19 +138,19 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
             <BarChart data={chartData}>
               <defs>
                 <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#667eea" stopOpacity={0.9}/>
-                  <stop offset="95%" stopColor="#764ba2" stopOpacity={0.7}/>
+                  <stop offset="5%" stopColor="#93C5FD" stopOpacity={0.95}/>
+                  <stop offset="95%" stopColor="#60A5FA" stopOpacity={0.85}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="name" stroke="#666" style={{ fontSize: '12px', fontWeight: 500 }} />
-              <YAxis stroke="#666" style={{ fontSize: '12px' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" stroke="#6b7280" style={{ fontSize: '12px', fontWeight: 500 }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  border: '2px solid #667eea',
+                  backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                  border: '2px solid #93C5FD',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                 }} 
               />
               <Bar 
@@ -194,7 +199,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                 cy="50%"
                 outerRadius={100}
                 label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                labelLine={{ stroke: '#9ca3af', strokeWidth: 1 }}
                 animationDuration={800}
                 animationBegin={0}
               >
@@ -209,10 +214,10 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
               </Pie>
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  border: '2px solid #667eea',
+                  backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                  border: '2px solid #93C5FD',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
                 }} 
               />
             </PieChart>
@@ -263,7 +268,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                 innerRadius={60}
                 outerRadius={100}
                 label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                labelLine={{ stroke: '#9ca3af', strokeWidth: 1 }}
                 animationDuration={800}
                 paddingAngle={2}
               >
@@ -278,10 +283,10 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
               </Pie>
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  border: '2px solid #667eea',
+                  backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                  border: '2px solid #93C5FD',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
                 }} 
               />
             </PieChart>
@@ -294,27 +299,27 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
             <LineChart data={chartData}>
               <defs>
                 <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#667eea" />
-                  <stop offset="50%" stopColor="#764ba2" />
-                  <stop offset="100%" stopColor="#f093fb" />
+                  <stop offset="0%" stopColor="#93C5FD" />
+                  <stop offset="50%" stopColor="#60A5FA" />
+                  <stop offset="100%" stopColor="#A78BFA" />
                 </linearGradient>
                 <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
                   <feMerge>
                     <feMergeNode in="coloredBlur"/>
                     <feMergeNode in="SourceGraphic"/>
                   </feMerge>
                 </filter>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="name" stroke="#666" style={{ fontSize: '12px', fontWeight: 500 }} />
-              <YAxis stroke="#666" style={{ fontSize: '12px' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" stroke="#6b7280" style={{ fontSize: '12px', fontWeight: 500 }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  border: '2px solid #667eea',
+                  backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                  border: '2px solid #93C5FD',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                 }} 
               />
               <Line 
@@ -322,8 +327,8 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
                 dataKey="value" 
                 stroke="url(#lineGradient)" 
                 strokeWidth={4}
-                dot={{ fill: '#667eea', r: 6, strokeWidth: 2, stroke: '#fff' }}
-                activeDot={{ r: 8, fill: '#764ba2', stroke: '#fff', strokeWidth: 2 }}
+                dot={{ fill: '#60A5FA', r: 6, strokeWidth: 2, stroke: '#fff' }}
+                activeDot={{ r: 8, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }}
                 animationDuration={800}
               />
             </LineChart>
@@ -336,29 +341,29 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4facfe" stopOpacity={0.9}/>
-                  <stop offset="95%" stopColor="#00f2fe" stopOpacity={0.3}/>
+                  <stop offset="5%" stopColor="#93C5FD" stopOpacity={0.95}/>
+                  <stop offset="95%" stopColor="#DBEAFE" stopOpacity={0.3}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="name" stroke="#666" style={{ fontSize: '12px', fontWeight: 500 }} />
-              <YAxis stroke="#666" style={{ fontSize: '12px' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" stroke="#6b7280" style={{ fontSize: '12px', fontWeight: 500 }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  border: '2px solid #4facfe',
+                  backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                  border: '2px solid #93C5FD',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                 }} 
               />
               <Area 
                 type="monotone" 
                 dataKey="value" 
-                stroke="#4facfe" 
+                stroke="#60A5FA" 
                 strokeWidth={3}
                 fill="url(#colorArea)"
                 animationDuration={800}
-                dot={{ fill: '#4facfe', r: 4, strokeWidth: 2, stroke: '#fff' }}
+                dot={{ fill: '#60A5FA', r: 4, strokeWidth: 2, stroke: '#fff' }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -371,7 +376,7 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({
 
   return (
     <div className="bg-gradient-to-br from-white to-gray-50 border border-primary-200 rounded-xl shadow-xl p-6 transform transition-all hover:shadow-2xl hover:-translate-y-1" style={{ 
-      boxShadow: '0 10px 25px rgba(0,0,0,0.1), 0 6px 12px rgba(102, 126, 234, 0.1)',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.08), 0 6px 12px rgba(59, 130, 246, 0.1)',
       background: 'linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%)'
     }}>
       {/* Chart Header with Controls */}

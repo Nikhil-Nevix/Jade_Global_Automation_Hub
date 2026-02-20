@@ -492,6 +492,25 @@ export const jobsApi = {
       return response.data;
     }
   },
+
+  // Get firmware compliance matrix
+  getFirmwareComplianceMatrix: async (jobIds?: number[]): Promise<{
+    success: boolean;
+    data: Array<{
+      location: string;
+      vendors: {
+        [vendorName: string]: {
+          percentage: number;
+          status: 'compliant' | 'warning' | 'critical';
+        };
+      };
+    }>;
+    vendors: string[];
+  }> => {
+    const params = jobIds ? { job_ids: jobIds.join(',') } : {};
+    const response = await axiosInstance.get('/jobs/compliance/firmware-matrix', { params });
+    return response.data;
+  },
 };
 
 // ===== Tickets API =====

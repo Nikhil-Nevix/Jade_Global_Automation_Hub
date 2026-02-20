@@ -1021,3 +1021,82 @@ def format_file_size(size_bytes):
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} TB"
+
+
+@jobs_bp.route('/compliance/firmware-matrix', methods=['GET'])
+@jwt_required()
+def get_firmware_compliance_matrix():
+    """
+    Get firmware compliance matrix data across locations and vendors
+    
+    Query Parameters:
+        job_ids: comma-separated list of job IDs to aggregate data from (optional)
+        
+    Returns:
+        Firmware compliance matrix with percentages per location/vendor
+    """
+    try:
+        job_ids_param = request.args.get('job_ids')
+        
+        # Parse job IDs or use recent jobs
+        if job_ids_param:
+            job_ids = [int(x.strip()) for x in job_ids_param.split(',')]
+        else:
+            # Default: get recent compliance jobs
+            # You can customize this query based on playbook names
+            from app.models import Job
+            recent_jobs = Job.query.filter(
+                Job.status == 'success'
+            ).order_by(Job.created_at.desc()).limit(10).all()
+            job_ids = [job.id for job in recent_jobs]
+        
+        # TODO: Implement actual CSV parsing logic here
+        # For now, return mock data structure
+        # In production, you would:
+        # 1. Load CSV files from each job
+        # 2. Parse vendor compliance data
+        # 3. Aggregate by location
+        # 4. Calculate percentages
+        
+        matrix_data = [
+            {
+                'location': 'Mumbai DC',
+                'vendors': {
+                    'Cisco': {'percentage': 92, 'status': 'compliant'},
+                    'Fortinet': {'percentage': 78, 'status': 'warning'},
+                    'Palo Alto': {'percentage': 88, 'status': 'warning'},
+                    'HPE': {'percentage': 85, 'status': 'warning'}
+                }
+            },
+            {
+                'location': 'BLR DC',
+                'vendors': {
+                    'Cisco': {'percentage': 81, 'status': 'warning'},
+                    'Fortinet': {'percentage': 74, 'status': 'warning'},
+                    'Palo Alto': {'percentage': 90, 'status': 'compliant'},
+                    'HPE': {'percentage': 72, 'status': 'warning'}
+                }
+            },
+            {
+                'location': 'US DC',
+                'vendors': {
+                    'Cisco': {'percentage': 88, 'status': 'warning'},
+                    'Fortinet': {'percentage': 83, 'status': 'warning'},
+                    'Palo Alto': {'percentage': 79, 'status': 'warning'},
+                    'HPE': {'percentage': 70, 'status': 'critical'}
+                }
+            }
+        ]
+        
+        return jsonify({
+            'success': True,
+            'data': matrix_data,
+            'vendors': ['Cisco', 'Fortinet', 'Palo Alto', 'HPE']
+        }), 200
+        
+    except Exception as err:
+        return jsonify(error_schema.dump({
+            'error': 'internal_error',
+            'message': f'Failed to get firmware compliance matrix: {str(err)}'
+        })), 500
+
