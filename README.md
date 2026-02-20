@@ -904,5 +904,5 @@ Future enhancements being considered:
 ---
 
 **Built by-
-Nikhil Rokade
+Nikhil Rokade |
 Jade Global Software Pvt Ltd**
