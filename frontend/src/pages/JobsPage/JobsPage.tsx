@@ -422,15 +422,17 @@ export const JobsPage: React.FC = () => {
                     </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          {/* Delete button - available for all jobs */}
-                          <button
-                            onClick={(e) => handleStopJob(job, e)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-full transition-colors"
-                            title="Delete Job"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Delete
-                          </button>
+                          {/* Delete button - Admin/Super Admin only */}
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => handleStopJob(job, e)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-full transition-colors"
+                              title="Delete Job"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </button>
+                          )}
                           
                           {/* Debug button - only for failed jobs */}
                           {job.status === 'failed' && (

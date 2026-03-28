@@ -211,7 +211,7 @@ def get_job_logs(job_id):
 @jwt_required()
 def cancel_job(job_id):
     """
-    Cancel a running, pending, or failed job (all users can cancel)
+    Cancel a running, pending, or failed job (admin only)
     
     Returns:
         Updated job
@@ -221,8 +221,12 @@ def cancel_job(job_id):
         current_user_id = get_jwt_identity()
         current_user = auth_service.get_current_user(current_user_id)
         
-        # All authenticated users can cancel jobs
-        # No permission check required
+        # Check permission - admin only can cancel jobs
+        if not auth_service.check_permission(current_user, 'admin'):
+            return jsonify(error_schema.dump({
+                'error': 'forbidden',
+                'message': 'Only administrators can cancel jobs'
+            })), 403
         
         # Cancel job
         job = job_service.cancel_job(job_id, current_user_id)

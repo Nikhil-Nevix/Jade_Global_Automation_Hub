@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { jobsApi } from '../../api/api';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
 import { formatJobDateTime, getUserTimezone } from '../../utils/timezone';
 import { webSocketService } from '../../services/websocket';
@@ -45,6 +46,7 @@ export const JobDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addNotification } = useUIStore();
+  const { user } = useAuthStore();
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -657,8 +659,9 @@ export const JobDetailsPage: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Cancel Button */}
-          {(job.status === 'pending' || job.status === 'running' || job.status === 'failed') && (
+          {/* Cancel Button - Admin/Super Admin only */}
+          {user && (user.role === 'admin' || user.role === 'super_admin') && 
+           (job.status === 'pending' || job.status === 'running' || job.status === 'failed') && (
             <button
               onClick={handleCancel}
               className="flex items-center gap-2 px-4 py-2 text-white bg-error-500 rounded-lg hover:bg-error-600 transition-colors"
