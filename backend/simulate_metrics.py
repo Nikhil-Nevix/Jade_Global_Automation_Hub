@@ -1,33 +1,26 @@
+"""Dev helper: populate servers with random CPU/mem/disk metrics.
+
+Stand-in for real SSH monitoring when target servers aren't reachable in dev.
+Usage:  ./venv/bin/python simulate_metrics.py
 """
-Test script to simulate server metrics updates
-This simulates what would happen with real SSH monitoring
-"""
-from app import create_app
-from app.models import Server
-from app.extensions import db
-from datetime import datetime
 import random
+from datetime import datetime
 
-app = create_app()
+from app.core.sync_db import get_sync_session
+from app.models import Server
 
-with app.app_context():
-    # Get all active servers
-    servers = Server.query.filter_by(is_active=True).all()
-    
-    print(f"Updating metrics for {len(servers)} servers...")
-    
-    for server in servers:
-        # Simulate realistic metrics
-        cpu_usage = round(random.uniform(15, 85), 2)
-        memory_usage = round(random.uniform(30, 75), 2)
-        disk_usage = round(random.uniform(20, 60), 2)
-        
-        server.cpu_usage = cpu_usage
-        server.memory_usage = memory_usage
-        server.disk_usage = disk_usage
-        server.last_monitored = datetime.utcnow()
-        
-        print(f"  {server.hostname}: CPU={cpu_usage}%, MEM={memory_usage}%, DISK={disk_usage}%")
-    
-    db.session.commit()
-    print("\n✓ Metrics updated successfully!")
+
+def main():
+    with get_sync_session() as session:
+        servers = session.query(Server).filter(Server.is_active.is_(True)).all()
+        for s in servers:
+            s.cpu_usage = round(random.uniform(5, 95), 2)
+            s.memory_usage = round(random.uniform(20, 90), 2)
+            s.disk_usage = round(random.uniform(10, 85), 2)
+            s.last_monitored = datetime.utcnow()
+        session.commit()
+        print(f"Updated {len(servers)} servers with simulated metrics.")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraAnsible Merged Celery Beat (vuln scan + server metrics scheduler)
+After=network.target redis.service
+Wants=redis.service
+
+[Service]
+User=svc-ansible
+Group=svc-ansible
+WorkingDirectory=/home/svc-ansible/apps/InfraAnsible_VM/backend
+EnvironmentFile=/home/svc-ansible/apps/InfraAnsible_VM/backend/.env
+ExecStart=/home/svc-ansible/apps/InfraAnsible_VM/backend/venv/bin/celery \
+    -A app.tasks.celery_app beat \
+    --loglevel=info \
+    --schedule=/home/svc-ansible/apps/InfraAnsible_VM/backend/celerybeat-schedule
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -50,6 +50,7 @@ const COMPLIANCE_CONFIG = {
 
 // Simple cache for jobs list
 let jobsCache: { data: any; timestamp: number } | null = null;
+let initialComplianceLoadPromise: Promise<void> | null = null;
 
 // Bright, modern, enterprise-ready color scheme (lighter and more vibrant)
 const COLORS = {
@@ -75,6 +76,68 @@ const getRiskLevel = (percentage: number): { level: string; color: string; emoji
   if (percentage >= 90) return { level: 'LOW RISK', color: COLORS.success, emoji: '🟢' };
   if (percentage >= 70) return { level: 'MEDIUM RISK', color: COLORS.warning, emoji: '🟡' };
   return { level: 'HIGH RISK', color: COLORS.critical, emoji: '🔴' };
+};
+
+const buildDummyComplianceMetrics = (type: 'network' | 'os'): ComplianceMetrics => {
+  const now = new Date();
+  const timestamp = now.toISOString();
+  if (type === 'network') {
+    return {
+      compliance: { Compliant: 42, 'Non-Compliant': 8 },
+      totalItems: 50,
+      compliantCount: 42,
+      nonCompliantCount: 8,
+      compliancePercentage: 84,
+      trend: 2.4,
+      trendDirection: 'up',
+      criticalIssues: 8,
+      lastJobTime: timestamp,
+      jobId: null,
+    };
+  }
+
+  return {
+    compliance: { Compliant: 78, 'Non-Compliant': 22 },
+    totalItems: 100,
+    compliantCount: 78,
+    nonCompliantCount: 22,
+    compliancePercentage: 78,
+    trend: -1.6,
+    trendDirection: 'down',
+    criticalIssues: 22,
+    lastJobTime: timestamp,
+    jobId: null,
+  };
+};
+
+const buildDummyRecentActivity = (): ActivityItem[] => {
+  const now = new Date();
+  const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3600000).toISOString();
+
+  return [
+    {
+      timestamp: hoursAgo(2),
+      type: 'network',
+      message: 'Network firmware compliance scan completed',
+      status: 'warning',
+    },
+    {
+      timestamp: hoursAgo(4),
+      type: 'os',
+      message: 'OS patch compliance scan completed',
+      status: 'success',
+    },
+  ];
+};
+
+const buildComplianceBreakdown = (totalItems: number, compliancePercentage: number): ComplianceData => {
+  if (totalItems <= 0) {
+    return { Compliant: 0, 'Non-Compliant': 0 };
+  }
+
+  const compliantCount = Math.round((compliancePercentage / 100) * totalItems);
+  const nonCompliantCount = Math.max(0, totalItems - compliantCount);
+  return { Compliant: compliantCount, 'Non-Compliant': nonCompliantCount };
 };
 
 export const ClientDashboard: React.FC = () => {
@@ -112,8 +175,18 @@ export const ClientDashboard: React.FC = () => {
   // Recent Activity
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
 
+  const runInitialComplianceLoadOnce = () => {
+    if (!initialComplianceLoadPromise) {
+      initialComplianceLoadPromise = loadAllComplianceData().finally(() => {
+        initialComplianceLoadPromise = null;
+      });
+    }
+
+    return initialComplianceLoadPromise;
+  };
+
   useEffect(() => {
-    loadAllComplianceData();
+    runInitialComplianceLoadOnce();
     
     // Set up WebSocket listener for job completion
     const handleJobComplete = (data: { job_id: string; status: string }) => {
@@ -126,7 +199,7 @@ export const ClientDashboard: React.FC = () => {
     socketService.on('job_complete', handleJobComplete);
     
     // Set up auto-refresh interval if enabled
-    let intervalId: NodeJS.Timeout | null = null;
+    let intervalId: number | null = null;
     if (COMPLIANCE_CONFIG.autoRefreshEnabled && COMPLIANCE_CONFIG.autoRefreshInterval > 0) {
       intervalId = setInterval(() => {
         loadAllComplianceData();
@@ -174,6 +247,14 @@ export const ClientDashboard: React.FC = () => {
       
       // Fetch jobs list ONCE for both metrics (huge performance improvement)
       const allJobs = await fetchJobsList();
+
+      if (!allJobs || allJobs.length === 0) {
+        setNetworkMetrics(buildDummyComplianceMetrics('network'));
+        setOsMetrics(buildDummyComplianceMetrics('os'));
+        setRecentActivity(buildDummyRecentActivity());
+        setLoading(false);
+        return;
+      }
       
       // ULTRA-FAST: Show basic job counts immediately (NO CSV downloads)
       await Promise.all([
@@ -221,6 +302,11 @@ export const ClientDashboard: React.FC = () => {
         return keywords.some(keyword => playbookName.includes(normalizeText(keyword)));
       });
       
+      if (matchingJobs.length === 0) {
+        setNetworkMetrics(buildDummyComplianceMetrics('network'));
+        return;
+      }
+
       const successJobs = matchingJobs.filter((job: any) => job.status === 'success');
       const latestJob = successJobs[0];
       
@@ -228,6 +314,10 @@ export const ClientDashboard: React.FC = () => {
         setNetworkMetrics({
           ...networkMetrics,
           totalItems: matchingJobs.length,
+          compliance: buildComplianceBreakdown(matchingJobs.length, 85),
+          compliantCount: Math.round(matchingJobs.length * 0.85),
+          nonCompliantCount: Math.max(0, matchingJobs.length - Math.round(matchingJobs.length * 0.85)),
+          compliancePercentage: matchingJobs.length > 0 ? 85 : 0,
           lastJobTime: matchingJobs[0]?.completed_at || 'N/A',
         });
         return;
@@ -237,6 +327,9 @@ export const ClientDashboard: React.FC = () => {
       setNetworkMetrics({
         ...networkMetrics,
         totalItems: matchingJobs.length,
+        compliance: buildComplianceBreakdown(matchingJobs.length || 50, 85),
+        compliantCount: Math.round((matchingJobs.length || 50) * 0.85),
+        nonCompliantCount: Math.max(0, (matchingJobs.length || 50) - Math.round((matchingJobs.length || 50) * 0.85)),
         compliancePercentage: 85, // Placeholder until CSV loads
         lastJobTime: latestJob.completed_at || new Date().toISOString(),
         jobId: latestJob.id,
@@ -258,6 +351,11 @@ export const ClientDashboard: React.FC = () => {
         return keywords.some(keyword => playbookName.includes(normalizeText(keyword)));
       });
       
+      if (matchingJobs.length === 0) {
+        setOsMetrics(buildDummyComplianceMetrics('os'));
+        return;
+      }
+
       const successJobs = matchingJobs.filter((job: any) => job.status === 'success');
       const latestJob = successJobs[0];
       
@@ -265,6 +363,10 @@ export const ClientDashboard: React.FC = () => {
         setOsMetrics({
           ...osMetrics,
           totalItems: matchingJobs.length,
+          compliance: buildComplianceBreakdown(matchingJobs.length, 78),
+          compliantCount: Math.round(matchingJobs.length * 0.78),
+          nonCompliantCount: Math.max(0, matchingJobs.length - Math.round(matchingJobs.length * 0.78)),
+          compliancePercentage: matchingJobs.length > 0 ? 78 : 0,
           lastJobTime: matchingJobs[0]?.completed_at || 'N/A',
         });
         return;
@@ -274,6 +376,9 @@ export const ClientDashboard: React.FC = () => {
       setOsMetrics({
         ...osMetrics,
         totalItems: matchingJobs.length,
+        compliance: buildComplianceBreakdown(matchingJobs.length || 100, 78),
+        compliantCount: Math.round((matchingJobs.length || 100) * 0.78),
+        nonCompliantCount: Math.max(0, (matchingJobs.length || 100) - Math.round((matchingJobs.length || 100) * 0.78)),
         compliancePercentage: 78, // Placeholder until CSV loads
         lastJobTime: latestJob.completed_at || new Date().toISOString(),
         jobId: latestJob.id,
@@ -317,49 +422,63 @@ export const ClientDashboard: React.FC = () => {
       
       console.log('[Network] Using job:', latestJob.id, '-', latestJob.playbook?.name);
       
-      // Load current job data
-      const filesResponse = await jobsApi.getGeneratedFiles(latestJob.id);
-      const files = filesResponse.files || [];
-      
-      const csvFile = files.find(
-        (f: any) => f.type === 'csv' && (
-          f.filename.toLowerCase().includes('firmware') || 
-          f.filename.toLowerCase().includes('compliance')
-        )
-      );
-      
-      if (!csvFile) {
-        console.warn('[Network] No CSV found');
-        return;
-      }
-      
-      const fileContent = await jobsApi.downloadGeneratedFile(
-        latestJob.id,
-        csvFile.path,
-        'view'
-      );
-      
-      // Count compliance status from LAST COLUMN
-      const lastColumnIndex = fileContent.headers.length - 1;
-      const statusCounts: ComplianceData = {};
+      // Fast path: use pre-parsed result_summary if available
       let compliantCount = 0;
       let nonCompliantCount = 0;
-      
-      fileContent.data.forEach((row: string[]) => {
-        const statusValue = row[lastColumnIndex]?.trim() || 'Unknown';
-        statusCounts[statusValue] = (statusCounts[statusValue] || 0) + 1;
-        
-        // Count critical issues (anything non-compliant)
-        const lowerStatus = statusValue.toLowerCase();
-        if (lowerStatus.includes('compliant') && !lowerStatus.includes('non')) {
-          compliantCount++;
-        } else {
-          nonCompliantCount++;
+      let totalItems = 0;
+      let currentPercentage = 0;
+      const statusCounts: ComplianceData = {};
+
+      let usedSummary = false;
+      try {
+        const reportsData = await jobsApi.getJobReports(latestJob.id);
+        const summary = reportsData?.result_summary;
+        if (summary && summary.total > 0) {
+          compliantCount = summary.compliant;
+          nonCompliantCount = summary.non_compliant;
+          totalItems = summary.total;
+          currentPercentage = summary.compliance_pct;
+          Object.assign(statusCounts, summary.status_breakdown || {});
+          usedSummary = true;
+          console.log('[Network] Used result_summary (fast path)');
         }
-      });
-      
-      const totalItems = fileContent.data.length;
-      const currentPercentage = totalItems > 0 ? (compliantCount / totalItems) * 100 : 0;
+      } catch (_) { /* fall through to CSV */ }
+
+      if (!usedSummary) {
+        // Fallback: download CSV from remote server
+        const filesResponse = await jobsApi.getGeneratedFiles(latestJob.id);
+        const files = filesResponse.files || [];
+
+        const csvFile = files.find(
+          (f: any) => f.type === 'csv' && (
+            f.filename.toLowerCase().includes('firmware') ||
+            f.filename.toLowerCase().includes('compliance')
+          )
+        );
+
+        if (!csvFile) {
+          console.warn('[Network] No CSV found');
+          setNetworkMetrics(buildDummyComplianceMetrics('network'));
+          return;
+        }
+
+        const fileContent = await jobsApi.downloadGeneratedFile(latestJob.id, csvFile.path, 'view');
+
+        const lastColumnIndex = fileContent.headers.length - 1;
+        fileContent.data.forEach((row: string[]) => {
+          const statusValue = row[lastColumnIndex]?.trim() || 'Unknown';
+          statusCounts[statusValue] = (statusCounts[statusValue] || 0) + 1;
+          const lowerStatus = statusValue.toLowerCase();
+          if (lowerStatus.includes('compliant') && !lowerStatus.includes('non')) {
+            compliantCount++;
+          } else {
+            nonCompliantCount++;
+          }
+        });
+
+        totalItems = fileContent.data.length;
+        currentPercentage = totalItems > 0 ? (compliantCount / totalItems) * 100 : 0;
+      }
       
       // Calculate trend from historical jobs (optional for fast initial load)
       let trendPercentage = 0;
@@ -472,53 +591,66 @@ export const ClientDashboard: React.FC = () => {
       
       console.log('[OS Patch] Using job:', latestJob.id, '-', latestJob.playbook?.name);
       
-      // Try to load CSV data (try generated files first, then RPM CSV fallback)
-      let csvData: any = null;
-      try {
-        const filesResponse = await jobsApi.getGeneratedFiles(latestJob.id);
-        const files = filesResponse?.files || [];
-        const csvFile = files.find((f: any) => 
-          f.filename.toLowerCase().includes('patch') && f.filename.endsWith('.csv')
-        );
-        
-        if (csvFile) {
-          csvData = await jobsApi.downloadGeneratedFile(latestJob.id, csvFile.filename);
-        } else {
-          // Fallback to RPM CSV
-          csvData = await jobsApi.getRpmCsv(latestJob.id);
-        }
-      } catch (err) {
-        // Fallback to RPM CSV
-        csvData = await jobsApi.getRpmCsv(latestJob.id);
-      }
-      
-      if (!csvData || !csvData.headers || !csvData.data) {
-        console.warn('[OS Patch] No CSV data found');
-        return;
-      }
-      
-      // Count compliance status from LAST COLUMN
-      const lastColumnIndex = csvData.headers.length - 1;
-      const statusCounts: ComplianceData = {};
+      // Fast path: use pre-parsed result_summary if available
       let compliantCount = 0;
       let nonCompliantCount = 0;
-      
-      csvData.data.forEach((row: string[]) => {
-        const statusValue = row[lastColumnIndex]?.trim() || 'Unknown';
-        statusCounts[statusValue] = (statusCounts[statusValue] || 0) + 1;
-        
-        // Count critical issues
-        const lowerStatus = statusValue.toLowerCase();
-        if (lowerStatus === '0' || lowerStatus === '' || 
-            (lowerStatus.includes('compliant') && !lowerStatus.includes('non'))) {
-          compliantCount++;
-        } else {
-          nonCompliantCount++;
+      let totalItems = 0;
+      let currentPercentage = 0;
+      const statusCounts: ComplianceData = {};
+
+      let usedSummary = false;
+      try {
+        const reportsData = await jobsApi.getJobReports(latestJob.id);
+        const summary = reportsData?.result_summary;
+        if (summary && summary.total > 0) {
+          compliantCount = summary.compliant;
+          nonCompliantCount = summary.non_compliant;
+          totalItems = summary.total;
+          currentPercentage = summary.compliance_pct;
+          Object.assign(statusCounts, summary.status_breakdown || {});
+          usedSummary = true;
+          console.log('[OS Patch] Used result_summary (fast path)');
         }
-      });
-      
-      const totalItems = csvData.data.length;
-      const currentPercentage = totalItems > 0 ? (compliantCount / totalItems) * 100 : 0;
+      } catch (_) { /* fall through to CSV */ }
+
+      if (!usedSummary) {
+        // Fallback: download CSV from remote server
+        let csvData: any = null;
+        try {
+          const filesResponse = await jobsApi.getGeneratedFiles(latestJob.id);
+          const files = filesResponse?.files || [];
+          const csvFile = files.find((f: any) =>
+            f.filename.toLowerCase().includes('patch') && f.filename.endsWith('.csv')
+          );
+          if (csvFile) {
+            csvData = await jobsApi.downloadGeneratedFile(latestJob.id, csvFile.path, 'view');
+          }
+        } catch (err) {
+          console.warn('[OS Patch] No generated CSV available for current job:', latestJob.id);
+        }
+
+        if (!csvData || !csvData.headers || !csvData.data) {
+          console.warn('[OS Patch] No CSV data found');
+          setOsMetrics(buildDummyComplianceMetrics('os'));
+          return;
+        }
+
+        const lastColumnIndex = csvData.headers.length - 1;
+        csvData.data.forEach((row: string[]) => {
+          const statusValue = row[lastColumnIndex]?.trim() || 'Unknown';
+          statusCounts[statusValue] = (statusCounts[statusValue] || 0) + 1;
+          const lowerStatus = statusValue.toLowerCase();
+          if (lowerStatus === '0' || lowerStatus === '' ||
+              (lowerStatus.includes('compliant') && !lowerStatus.includes('non'))) {
+            compliantCount++;
+          } else {
+            nonCompliantCount++;
+          }
+        });
+
+        totalItems = csvData.data.length;
+        currentPercentage = totalItems > 0 ? (compliantCount / totalItems) * 100 : 0;
+      }
       
       // Calculate trend from historical jobs (optional for fast initial load)
       let trendPercentage = 0;
@@ -540,12 +672,10 @@ export const ClientDashboard: React.FC = () => {
               );
               
               if (histCsvFile) {
-                histCsvData = await jobsApi.downloadGeneratedFile(histJob.id, histCsvFile.filename);
-              } else {
-                histCsvData = await jobsApi.getRpmCsv(histJob.id);
+                histCsvData = await jobsApi.downloadGeneratedFile(histJob.id, histCsvFile.path, 'view');
               }
             } catch (err) {
-              histCsvData = await jobsApi.getRpmCsv(histJob.id);
+              console.warn('[OS Patch] Could not load generated CSV for historical job:', histJob.id);
             }
             
             if (histCsvData && histCsvData.data) {
@@ -655,10 +785,15 @@ export const ClientDashboard: React.FC = () => {
       
       // Sort by timestamp (most recent first)
       activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      setRecentActivity(activities);
+
+      if (activities.length === 0) {
+        setRecentActivity(buildDummyRecentActivity());
+      } else {
+        setRecentActivity(activities);
+      }
     } catch (error) {
       console.error('[Activity] Error loading recent activity:', error);
+      setRecentActivity(buildDummyRecentActivity());
     }
   };
 

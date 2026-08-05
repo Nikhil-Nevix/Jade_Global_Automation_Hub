@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraAnsible Vulnerability Celery Worker
+After=network.target redis.service postgresql.service
+Wants=redis.service postgresql.service
+
+[Service]
+User=svc-ansible
+Group=svc-ansible
+WorkingDirectory=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend
+EnvironmentFile=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/.env
+ExecStart=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/venv/bin/celery \
+    -A app.tasks.celery_app worker \
+    --loglevel=info \
+    --concurrency=4
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

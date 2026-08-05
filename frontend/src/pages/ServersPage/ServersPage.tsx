@@ -5,11 +5,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, Edit, Trash2, CheckCircle, XCircle, RefreshCw, X, Info } from 'lucide-react';
-import { serversApi } from '../../api/api';
+import { serversApi, tagsApi } from '../../api/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { getUserTimezone } from '../../utils/timezone';
-import type { Server, ServerCreateRequest } from '../../types';
+import type { Server, ServerCreateRequest, Tag } from '../../types';
 
 export const ServersPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -39,16 +39,26 @@ export const ServersPage: React.FC = () => {
     os_type: 'linux',
     ssh_user: 'root',
     ssh_port: 22,
-    tags: [],
+    tag_ids: [],
   });
-  const [tagInput, setTagInput] = useState('');
+  const [allTags, setAllTags] = useState<Tag[]>([]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const canEdit = isAdmin;
 
   useEffect(() => {
     loadServers();
+    loadTags();
   }, []);
+
+  const loadTags = async () => {
+    try {
+      const res = await tagsApi.list();
+      setAllTags(res.items);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+    }
+  };
 
   // Fetch server metrics when details modal opens and refresh every 5 seconds
   useEffect(() => {
@@ -107,9 +117,8 @@ export const ServersPage: React.FC = () => {
       os_type: 'linux',
       ssh_user: 'root',
       ssh_port: 22,
-      tags: [],
+      tag_ids: [],
     });
-    setTagInput('');
     setShowModal(true);
   };
 
@@ -123,11 +132,8 @@ export const ServersPage: React.FC = () => {
       ssh_user: server.ssh_user,
       ssh_port: server.ssh_port,
       ssh_key_path: server.ssh_key_path,
-      tags: server.tags || [],
-      environment: server.environment,
-      description: server.description,
+      tag_ids: (server.tags || []).map((t) => t.id),
     });
-    setTagInput('');
     setShowModal(true);
   };
 
@@ -143,7 +149,7 @@ export const ServersPage: React.FC = () => {
         ssh_user: formData.ssh_user,
         ssh_port: formData.ssh_port,
         ssh_key_path: formData.ssh_key_path,
-        tags: formData.tags || [],
+        tag_ids: formData.tag_ids || [],
       };
 
       console.log('Sending server data:', serverData);
@@ -371,12 +377,12 @@ export const ServersPage: React.FC = () => {
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
                       {server.tags && server.tags.length > 0 ? (
-                        server.tags.slice(0, 3).map((tag, idx) => (
+                        server.tags.slice(0, 3).map((tag) => (
                           <span
-                            key={idx}
+                            key={tag.id}
                             className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700"
                           >
-                            {tag}
+                            {tag.name}
                           </span>
                         ))
                       ) : (
@@ -574,70 +580,41 @@ export const ServersPage: React.FC = () => {
               {/* Tags Input */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tags <span className="text-gray-500 text-xs">(for grouping servers)</span>
+                  Tags <span className="text-gray-500 text-xs">(group servers — managed in Tags)</span>
                 </label>
-                <div className="space-y-2">
-                  {/* Tag input */}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Add tag (e.g., production, web-server)"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && tagInput.trim()) {
-                          e.preventDefault();
-                          const newTag = tagInput.trim();
-                          if (!formData.tags?.includes(newTag)) {
-                            setFormData({ ...formData, tags: [...(formData.tags || []), newTag] });
-                          }
-                          setTagInput('');
-                        }
-                      }}
-                      className="flex-1 px-4 py-2.5 bg-gray-50 text-gray-900 placeholder-gray-400 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (tagInput.trim()) {
-                          const newTag = tagInput.trim();
-                          if (!formData.tags?.includes(newTag)) {
-                            setFormData({ ...formData, tags: [...(formData.tags || []), newTag] });
-                          }
-                          setTagInput('');
-                        }
-                      }}
-                      className="px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors font-medium"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {/* Display tags */}
-                  {formData.tags && formData.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {formData.tags.map((tag, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium"
+                {allTags.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">
+                    No tags available yet. Create tags to group servers for scanning.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allTags.map((tag) => {
+                      const selected = formData.tag_ids?.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => {
+                            const current = formData.tag_ids || [];
+                            setFormData({
+                              ...formData,
+                              tag_ids: selected
+                                ? current.filter((id) => id !== tag.id)
+                                : [...current, tag.id],
+                            });
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                            selected
+                              ? 'bg-primary-500 text-white border-primary-500'
+                              : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                          }`}
                         >
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData({
-                                ...formData,
-                                tags: formData.tags?.filter((_, i) => i !== index)
-                              });
-                            }}
-                            className="hover:text-primary-900"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                          {tag.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Modal Footer */}

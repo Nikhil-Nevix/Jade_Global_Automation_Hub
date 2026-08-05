@@ -100,7 +100,7 @@ To access the database to verify data:
 # SSH into your Linux VM first
 ssh HostName@<VM-IP>
 
-# Connect to MySQL/MariaDB
+# Connect to MySQL
 mysql -u infra_user -p infra_automation
 # Enter password: infra_pass123
 ```

@@ -1,230 +1,167 @@
+"""Interactive playbook API — ported from InfraAnsible (VM).
+
+Drives the runtime patch-selection flow:
+
+  running playbook ──POST /patches-ready──▶ backend ──(WebSocket patches_ready)──▶ UI
+  UI ──GET /available-patches──▶ backend ──(SSH read available_patches_<job>.txt)
+  UI ──POST /selected-patches──▶ backend ──(SSH write selected_patches_<job>.txt)──▶ unblocks playbook
+  running playbook ──POST /patch-report──▶ backend (stores CSV on the job)
+
+`patches-ready` and `patch-report` are unauthenticated because they are called by
+the Ansible playbook itself (via the injected backend_url). The user-facing
+endpoints require a normal access token.
+
+All endpoints accept a job reference that is either the numeric DB id or the job
+UUID (`Job.job_id`), so both the job-management UI and the interactive dialog work.
 """
-Interactive Playbook API
-Handles real-time playbook execution with user interaction
-"""
-from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import Job, Server
-from app.extensions import db
-from app.services.ssh_service import SSHService
-import os
+import asyncio
+import logging
 
-interactive_playbook_bp = Blueprint('interactive_playbook', __name__, url_prefix='/api/jobs')
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.deps import get_current_user
+from app.models import User, Job, Server
+from app.utils import ssh_client
+from app.websocket.emitter import emit_patches_ready
+
+logger = logging.getLogger("infraansible")
+router = APIRouter(prefix="/api/jobs", tags=["interactive"])
 
 
-@interactive_playbook_bp.route('/<job_id>/patches-ready', methods=['POST'])
-def patches_ready(job_id):
-    """
-    Called by Ansible playbook when available_patches.txt is ready
-    Triggers WebSocket event to show popup dialog in frontend
-    """
+async def resolve_job(db: AsyncSession, job_ref: str) -> Job:
+    """Look up a job by numeric DB id or by UUID string."""
+    job = None
+    if job_ref.isdigit():
+        job = await db.get(Job, int(job_ref))
+    if job is None:
+        result = await db.execute(select(Job).where(Job.job_id == job_ref))
+        job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return job
+
+
+@router.post("/{job_ref}/patches-ready")
+async def patches_ready(job_ref: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Ansible callback: available_patches file is ready → notify the UI."""
+    job = await resolve_job(db, job_ref)
+    data = {}
     try:
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Get file path from request
-        data = request.get_json() or {}
-        file_path = data.get('file_path', f'/tmp/available_patches_{job_id}.txt')
-        
-        current_app.logger.info(f'Patches ready notification received for job {job_id}, file: {file_path}')
-        
-        # Emit WebSocket event to notify frontend
-        from app.extensions import socketio
-        socketio.emit('patches_ready', {
-            'job_id': job_id,
-            'file_path': file_path
-        }, namespace='/')
-        
-        return jsonify({'message': 'Notification sent', 'job_id': job_id}), 200
-        
-    except Exception as e:
-        current_app.logger.error(f'Error in patches-ready for job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        data = await request.json()
+    except Exception:
+        pass
+    file_path = data.get("file_path") or f"/tmp/available_patches_{job.job_id}.txt"
+    logger.info(f"patches-ready for job {job.job_id}, file: {file_path}")
+    emit_patches_ready(job.job_id, file_path)
+    return {"message": "Notification sent", "job_id": job.job_id}
 
 
-@interactive_playbook_bp.route('/<job_id>/available-patches', methods=['GET'])
-@jwt_required()
-def get_available_patches(job_id):
-    """
-    Fetch content of available_patches.txt from remote server
-    Returns list of patches for user to select
-    """
+@router.get("/{job_ref}/available-patches")
+async def get_available_patches(
+    job_ref: str,
+    file_path: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read available_patches_<job>.txt from the target server over SSH."""
+    job = await resolve_job(db, job_ref)
+    server = await db.get(Server, job.server_id)
+    if server is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+
+    path = file_path or f"/tmp/available_patches_{job.job_id}.txt"
     try:
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Get server
-        server = Server.query.get(job.server_id)
-        if not server:
-            return jsonify({'error': 'Server not found'}), 404
-        
-        # Get file path
-        file_path = request.args.get('file_path', f'/tmp/available_patches_{job_id}.txt')
-        
-        # Read file from server via SSH
-        ssh_service = SSHService()
-        content = ssh_service.read_file(server, file_path)
-        
-        # Parse content (one patch per line)
-        patches = [line.strip() for line in content.split('\n') if line.strip()]
-        
-        return jsonify({
-            'job_id': job_id,
-            'file_path': file_path,
-            'patches': patches,
-            'total': len(patches)
-        }), 200
-        
+        content = await asyncio.to_thread(
+            ssh_client.read_remote_file,
+            ip_address=server.ip_address, ssh_user=server.ssh_user,
+            ssh_port=server.ssh_port, remote_path=path, ssh_key_path=server.ssh_key_path,
+        )
     except Exception as e:
-        current_app.logger.error(f'Error fetching patches for job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error fetching patches for job {job.job_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Failed to read patches: {e}")
+
+    patches = [line.strip() for line in content.splitlines() if line.strip()]
+    return {"job_id": job.job_id, "file_path": path, "patches": patches, "total": len(patches)}
 
 
-@interactive_playbook_bp.route('/<job_id>/selected-patches', methods=['POST'])
-@jwt_required()
-def submit_selected_patches(job_id):
-    """
-    Write selected patches to selected_patches.txt on remote server
-    This allows the waiting playbook to continue execution
-    """
+@router.post("/{job_ref}/selected-patches")
+async def submit_selected_patches(
+    job_ref: str,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write the user's selected patches back to the target server, unblocking the playbook."""
+    job = await resolve_job(db, job_ref)
+    server = await db.get(Server, job.server_id)
+    if server is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+
+    selected = payload.get("selected_patches") or []
+    if not selected:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No patches selected")
+    path = payload.get("file_path") or f"/tmp/selected_patches_{job.job_id}.txt"
+    content = "\n".join(selected) + "\n"
+
     try:
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Get server
-        server = Server.query.get(job.server_id)
-        if not server:
-            return jsonify({'error': 'Server not found'}), 404
-        
-        # Get selected patches from request
-        data = request.get_json()
-        selected_patches = data.get('selected_patches', [])
-        file_path = data.get('file_path', f'/tmp/selected_patches_{job_id}.txt')
-        
-        if not selected_patches:
-            return jsonify({'error': 'No patches selected'}), 400
-        
-        # Create content (one patch per line)
-        content = '\n'.join(selected_patches)
-        
-        # Write file to server via SSH
-        ssh_service = SSHService()
-        ssh_service.write_file(server, file_path, content)
-        
-        current_app.logger.info(f'Selected patches written for job {job_id}: {len(selected_patches)} patches')
-        
-        return jsonify({
-            'message': 'Selected patches saved successfully',
-            'job_id': job_id,
-            'patches_count': len(selected_patches),
-            'file_path': file_path
-        }), 200
-        
+        await asyncio.to_thread(
+            ssh_client.write_remote_file,
+            ip_address=server.ip_address, ssh_user=server.ssh_user,
+            ssh_port=server.ssh_port, remote_path=path, content=content,
+            ssh_key_path=server.ssh_key_path,
+        )
     except Exception as e:
-        current_app.logger.error(f'Error saving selected patches for job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error writing selected patches for job {job.job_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Failed to write patches: {e}")
+
+    logger.info(f"Selected patches written for job {job.job_id}: {len(selected)} patches")
+    return {"message": "Selected patches saved successfully", "job_id": job.job_id,
+            "patches_count": len(selected), "file_path": path}
 
 
-@interactive_playbook_bp.route('/<job_id>/patch-report', methods=['POST'])
-def save_patch_report(job_id):
-    """
-    Called by Ansible playbook after patching with CSV report
-    Saves patch report (Package,Old Version,New Version,Status) to job record
-    """
+@router.post("/{job_ref}/patch-report")
+async def save_patch_report(job_ref: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Ansible callback: store the post-patch CSV report on the job."""
+    job = await resolve_job(db, job_ref)
+    data = {}
     try:
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Get CSV data from request
-        data = request.get_json() or {}
-        csv_data = data.get('csv_data', '')
-        
-        if not csv_data:
-            return jsonify({'error': 'No CSV data provided'}), 400
-        
-        # Save CSV to job record
-        job.patch_report = csv_data
-        db.session.commit()
-        
-        current_app.logger.info(f'Patch report saved for job {job_id}')
-        
-        return jsonify({
-            'message': 'Patch report saved successfully',
-            'job_id': job_id
-        }), 200
-        
-    except Exception as e:
-        current_app.logger.error(f'Error saving patch report for job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        data = await request.json()
+    except Exception:
+        pass
+    csv_data = data.get("csv_data", "")
+    if not csv_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No CSV data provided")
 
+    job.patch_report = csv_data
+    await db.commit()
 
-@interactive_playbook_bp.route('/<job_id>/patch-report', methods=['GET'])
-@jwt_required()
-def get_patch_report(job_id):
-    """
-    Download patch report CSV for a completed job
-    Returns CSV file with package version comparison
-    """
+    # Best-effort: persist to disk and build result_summary (report_service, Phase 2.4).
     try:
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Check if patch report exists
-        if not job.patch_report:
-            return jsonify({'error': 'No patch report available for this job'}), 404
-        
-        # Return CSV data
-        from flask import make_response
-        output = make_response(job.patch_report)
-        output.headers["Content-Disposition"] = f"attachment; filename=patch_report_{job_id}.csv"
-        output.headers["Content-type"] = "text/csv"
-        
-        return output
-        
+        from app.services import report_service
+        await asyncio.to_thread(report_service.save_patch_report_file, job.id, csv_data)
     except Exception as e:
-        current_app.logger.error(f'Error fetching patch report for job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        logger.warning(f"Patch report file save failed (non-fatal): {e}")
+
+    logger.info(f"Patch report saved for job {job.job_id}")
+    return {"message": "Patch report saved successfully", "job_id": job.job_id}
 
 
-@interactive_playbook_bp.route('/<job_id>/cancel', methods=['POST'])
-
-@jwt_required()
-def cancel_job_on_timeout(job_id):
-    """
-    Cancel job when user doesn't respond within timeout
-    """
-    try:
-        from app.tasks import cancel_job
-        
-        # Get job
-        job = Job.query.filter_by(job_id=job_id).first()
-        if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        
-        # Cancel the job
-        cancel_job(job_id)
-        
-        # Update job status
-        job.status = 'cancelled'
-        db.session.commit()
-        
-        current_app.logger.info(f'Job {job_id} cancelled due to timeout')
-        
-        return jsonify({
-            'message': 'Job cancelled successfully',
-            'job_id': job_id
-        }), 200
-        
-    except Exception as e:
-        current_app.logger.error(f'Error cancelling job {job_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+@router.get("/{job_ref}/patch-report")
+async def download_patch_report(
+    job_ref: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the stored patch-report CSV for a job."""
+    job = await resolve_job(db, job_ref)
+    if not job.patch_report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No patch report available for this job")
+    return Response(
+        content=job.patch_report,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=patch_report_{job.job_id}.csv"},
+    )

@@ -1,274 +1,87 @@
+"""Email service — SMTP notification sender (ported from InfraAnsible VM).
+
+Synchronous (smtplib), so it is safe to call from Celery workers directly and
+from async code via ``asyncio.to_thread``. Configuration comes from settings
+(SMTP_* keys); when SMTP_ENABLED is false it is a no-op that returns False.
 """
-Email Service
-Handles sending email notifications using SMTP
-"""
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
-import logging
-import os
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
 
-# Email configuration from environment variables
-SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER', '')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
-SMTP_FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', SMTP_USER)
-SMTP_FROM_NAME = os.getenv('SMTP_FROM_NAME', 'Jade Global Automation Hub')
-SMTP_ENABLED = os.getenv('SMTP_ENABLED', 'false').lower() == 'true'
+logger = logging.getLogger("infraansible")
+
+_SEVERITY_COLORS = {"info": "#3B82F6", "warning": "#F59E0B", "error": "#EF4444", "critical": "#DC2626"}
+_EVENT_EMOJIS = {
+    "job_success": "✅", "job_failure": "❌", "batch_complete": "📦",
+    "server_failure": "🔴", "high_cpu": "⚠️", "user_change": "👤",
+    "playbook_update": "📝", "system_alert": "🔔",
+}
 
 
-def send_email(
-    to_email: str,
-    subject: str,
-    html_body: str,
-    text_body: Optional[str] = None
-) -> bool:
-    """
-    Send an email via SMTP
-    
-    Args:
-        to_email: Recipient email address
-        subject: Email subject
-        html_body: HTML email body
-        text_body: Plain text email body (fallback)
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    if not SMTP_ENABLED:
-        logger.warning("SMTP is disabled. Email not sent.")
+def send_email(to_email: str, subject: str, html_body: str, text_body: Optional[str] = None) -> bool:
+    if not settings.SMTP_ENABLED:
+        logger.debug("SMTP disabled; email not sent.")
         return False
-    
-    if not SMTP_USER or not SMTP_PASSWORD:
-        logger.error("SMTP credentials not configured. Cannot send email.")
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        logger.error("SMTP credentials not configured; cannot send email.")
         return False
-    
+    from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
     try:
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
-        msg['To'] = to_email
-        
-        # Add text and HTML parts
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{settings.SMTP_FROM_NAME} <{from_email}>"
+        msg["To"] = to_email
         if text_body:
-            part1 = MIMEText(text_body, 'plain')
-            msg.attach(part1)
-        
-        part2 = MIMEText(html_body, 'html')
-        msg.attach(part2)
-        
-        # Send email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            msg.attach(MIMEText(text_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as server:
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.send_message(msg)
-        
-        logger.info(f"Email sent successfully to {to_email}")
+        logger.info(f"Email sent to {to_email}")
         return True
-        
-    except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to send email to {to_email}: {e}")
         return False
 
 
-def send_notification_email(
-    to_email: str,
-    title: str,
-    message: str,
-    severity: str,
-    event_type: str
-) -> bool:
-    """
-    Send a notification email with formatted template
-    
-    Args:
-        to_email: Recipient email address
-        title: Notification title
-        message: Notification message
-        severity: Notification severity (info, warning, error, critical)
-        event_type: Event type
-    
-    Returns:
-        True if successful
-    """
-    # Determine color based on severity
-    severity_colors = {
-        'info': '#3B82F6',  # Blue
-        'warning': '#F59E0B',  # Yellow
-        'error': '#EF4444',  # Red
-        'critical': '#DC2626'  # Dark red
-    }
-    color = severity_colors.get(severity, '#3B82F6')
-    
-    # Determine emoji based on event type
-    event_emojis = {
-        'job_success': '✅',
-        'job_failure': '❌',
-        'batch_complete': '📦',
-        'server_failure': '🔴',
-        'high_cpu': '⚠️',
-        'user_change': '👤',
-        'playbook_update': '📝',
-        'system_alert': '🔔'
-    }
-    emoji = event_emojis.get(event_type, '🔔')
-    
-    # HTML email template
+def send_notification_email(to_email: str, title: str, message: str, severity: str, event_type: str) -> bool:
+    color = _SEVERITY_COLORS.get(severity, "#3B82F6")
+    emoji = _EVENT_EMOJIS.get(event_type, "🔔")
     html_body = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                margin: 0;
-                padding: 0;
-                background-color: #f4f4f5;
-            }}
-            .container {{
-                max-width: 600px;
-                margin: 40px auto;
-                background-color: #ffffff;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            }}
-            .header {{
-                background: linear-gradient(135deg, #9333EA 0%, #7E22CE 100%);
-                color: white;
-                padding: 30px 20px;
-                text-align: center;
-            }}
-            .header h1 {{
-                margin: 0;
-                font-size: 24px;
-                font-weight: 600;
-            }}
-            .content {{
-                padding: 30px 20px;
-            }}
-            .notification-badge {{
-                display: inline-block;
-                background-color: {color};
-                color: white;
-                padding: 6px 12px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 600;
-                text-transform: uppercase;
-                margin-bottom: 20px;
-            }}
-            .notification-title {{
-                font-size: 20px;
-                font-weight: 600;
-                color: #1f2937;
-                margin: 0 0 15px 0;
-            }}
-            .notification-message {{
-                font-size: 16px;
-                color: #4b5563;
-                line-height: 1.6;
-                margin: 0 0 20px 0;
-            }}
-            .footer {{
-                background-color: #f9fafb;
-                padding: 20px;
-                text-align: center;
-                font-size: 14px;
-                color: #6b7280;
-                border-top: 1px solid #e5e7eb;
-            }}
-            .button {{
-                display: inline-block;
-                background: linear-gradient(135deg, #9333EA 0%, #7E22CE 100%);
-                color: white;
-                padding: 12px 24px;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: 600;
-                margin-top: 10px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>{emoji} Jade Global Automation Hub</h1>
-            </div>
-            <div class="content">
-                <span class="notification-badge">{severity.upper()}</span>
-                <h2 class="notification-title">{title}</h2>
-                <p class="notification-message">{message}</p>
-                <a href="http://0.0.0.0:5173/notifications" class="button">View in Dashboard</a>
-            </div>
-            <div class="footer">
-                <p>This is an automated notification from Jade Global Automation Hub.</p>
-                <p>To manage your notification preferences, visit the <a href="http://0.0.0.0:5173/notifications/preferences">Settings page</a>.</p>
-            </div>
+    <!DOCTYPE html><html><head><meta charset="utf-8"></head>
+    <body style="font-family:Arial,sans-serif;background:#f4f4f5;margin:0;padding:0;">
+      <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+        <div style="background:linear-gradient(135deg,#9333EA,#7E22CE);color:#fff;padding:30px 20px;text-align:center;">
+          <h1 style="margin:0;font-size:24px;">{emoji} {settings.SMTP_FROM_NAME}</h1>
         </div>
-    </body>
-    </html>
+        <div style="padding:30px 20px;">
+          <span style="display:inline-block;background:{color};color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-transform:uppercase;margin-bottom:20px;">{severity.upper()}</span>
+          <h2 style="font-size:20px;color:#1f2937;margin:0 0 15px;">{title}</h2>
+          <p style="font-size:16px;color:#4b5563;margin:0 0 20px;">{message}</p>
+        </div>
+        <div style="background:#f9fafb;padding:20px;text-align:center;font-size:14px;color:#6b7280;border-top:1px solid #e5e7eb;">
+          <p>This is an automated notification from {settings.SMTP_FROM_NAME}.</p>
+        </div>
+      </div>
+    </body></html>
     """
-    
-    # Plain text fallback
-    text_body = f"""
-{emoji} Jade Global Automation Hub
-
-{severity.upper()}: {title}
-
-{message}
-
-View in Dashboard: http://0.0.0.0:5173/notifications
-
----
-This is an automated notification from Jade Global Automation Hub.
-To manage your notification preferences, visit: http://0.0.0.0:5173/notifications/preferences
-    """
-    
-    subject = f"{emoji} {title} - Jade Global Automation Hub"
-    
+    text_body = f"{emoji} {settings.SMTP_FROM_NAME}\n\n{severity.upper()}: {title}\n\n{message}\n"
+    subject = f"{emoji} {title} - {settings.SMTP_FROM_NAME}"
     return send_email(to_email, subject, html_body, text_body)
 
 
 def send_test_email(to_email: str) -> bool:
-    """
-    Send a test email to verify SMTP configuration
-    
-    Args:
-        to_email: Recipient email address
-    
-    Returns:
-        True if successful
-    """
-    html_body = """
-    <html>
-    <body style="font-family: Arial, sans-serif;">
-        <h2>✅ Email Configuration Test</h2>
-        <p>This is a test email from Jade Global Automation Hub.</p>
-        <p>If you received this, your email configuration is working correctly!</p>
-    </body>
-    </html>
-    """
-    
-    text_body = """
-    ✅ Email Configuration Test
-    
-    This is a test email from Jade Global Automation Hub.
-    If you received this, your email configuration is working correctly!
-    """
-    
-    return send_email(
-        to_email=to_email,
-        subject="Test Email - Jade Global Automation Hub",
-        html_body=html_body,
-        text_body=text_body
+    html_body = (
+        "<html><body style=\"font-family:Arial,sans-serif;\">"
+        "<h2>✅ Email Configuration Test</h2>"
+        f"<p>This is a test email from {settings.SMTP_FROM_NAME}.</p>"
+        "<p>If you received this, your email configuration is working correctly!</p>"
+        "</body></html>"
     )
+    text_body = f"Email Configuration Test\n\nThis is a test email from {settings.SMTP_FROM_NAME}."
+    return send_email(to_email, f"Test Email - {settings.SMTP_FROM_NAME}", html_body, text_body)

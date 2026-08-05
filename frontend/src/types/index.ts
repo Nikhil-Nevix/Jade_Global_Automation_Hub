@@ -12,11 +12,95 @@ export interface User {
   username: string;
   email: string;
   role: UserRole;
+  domain: string;
   is_active: boolean;
   timezone: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   last_login: string | null;
+}
+
+// ===== Tag Types =====
+
+export interface Tag {
+  id: number;
+  name: string;
+  description?: string;
+  category?: string | null;   // 'environment' | 'role' | 'location' | null (manual)
+  created_at: string;
+  server_count?: number;
+}
+
+// ===== Vulnerability Types =====
+
+export interface ScanRun {
+  id: number;
+  run_id: string;
+  trigger_type: 'scheduled' | 'on_demand';
+  triggered_by: number | null;
+  server_count: number;
+  status: string;
+  minio_path: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface VulnerabilityFinding {
+  id: number;
+  scan_run_id: number;
+  ip?: string;
+  network?: string;
+  dns?: string;
+  netbios?: string;
+  os?: string;
+  title?: string;
+  severity?: string;
+  cve_id?: string;
+  vendor_reference?: string;
+  threat?: string;
+  impact?: string;
+  solution?: string;
+  results?: string;
+  qds?: number;
+  asset_group?: string;
+  server_role?: string;
+  last_scan_date?: string;
+  scan_status?: string;
+  os_family?: string;
+}
+
+export interface ScanTriggerRequest {
+  tag_ids: number[];
+  server_ids?: number[];
+  ip_addresses: string[];
+  playbook_id?: number;
+}
+
+export interface ServerLocation {
+  location: string;
+  server_count: number;
+}
+
+export interface ServerLocationsResponse {
+  locations: ServerLocation[];
+  unassigned: number;
+  total: number;
+}
+
+export interface SupersetTokenResponse {
+  token: string;
+  dashboard_id: string;
+  superset_domain: string;
+}
+
+export interface SupersetCustomizeResponse {
+  superset_domain: string;
+  username: string;
+  password: string;
+  dashboard_id: number;
+  edit_path: string;
 }
 
 export interface LoginRequest {
@@ -45,7 +129,8 @@ export interface Server {
   ssh_port: number;
   ssh_user: string;
   ssh_key_path?: string;
-  tags?: string[];  // Array of tag strings like ["production", "web-server"]
+  location?: string;
+  tags?: Tag[];  // Tag objects the server belongs to
   environment?: 'dev' | 'staging' | 'production';
   description?: string;
   is_active: boolean;
@@ -54,33 +139,30 @@ export interface Server {
   disk_usage?: number;
   last_monitored?: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface ServerCreateRequest {
-  hostname: string;
-  ip_address: string;
-  os_type: string;
-  os_version?: string;
-  ssh_port?: number;
-  ssh_user: string;
-  ssh_key_path?: string;
-  tags?: string[];
-  environment?: string;
-  description?: string;
-}
-
-export interface ServerUpdateRequest {
   hostname?: string;
-  ip_address?: string;
+  ip_address: string;
   os_type?: string;
   os_version?: string;
   ssh_port?: number;
   ssh_user?: string;
   ssh_key_path?: string;
-  tags?: string[];
-  environment?: string;
-  description?: string;
+  location?: string;
+  tag_ids?: number[];
+}
+
+export interface ServerUpdateRequest {
+  hostname?: string;
+  os_type?: string;
+  os_version?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_key_path?: string;
+  location?: string;
+  tag_ids?: number[];
   is_active?: boolean;
 }
 

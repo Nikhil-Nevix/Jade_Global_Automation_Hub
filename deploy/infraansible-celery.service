@@ -1,0 +1,20 @@
+[Unit]
+Description=InfraAnsible Celery Worker
+After=network.target redis.service infraansible-backend.service
+Wants=redis.service
+
+[Service]
+User=svc-ansible
+Group=svc-ansible
+WorkingDirectory=/home/svc-ansible/apps/InfraAnsible/backend
+EnvironmentFile=/home/svc-ansible/apps/InfraAnsible/backend/.env
+ExecStart=/home/svc-ansible/apps/InfraAnsible/backend/venv/bin/celery \
+    -A celery_worker worker \
+    --loglevel=info \
+    --logfile=/home/svc-ansible/apps/InfraAnsible/backend/celery.log \
+    --concurrency=4
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

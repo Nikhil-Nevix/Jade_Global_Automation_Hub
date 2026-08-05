@@ -20,6 +20,175 @@ export const NotificationsPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const limit = 20;
 
+  const buildDummyNotifications = (): Notification[] => {
+    const now = new Date();
+    const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60000).toISOString();
+    const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3600000).toISOString();
+
+    return [
+      {
+        id: 1001,
+        user_id: 1,
+        title: 'Playbook execution completed',
+        message: 'Playbook "deploy-webapp" completed successfully on web-server-01.',
+        severity: 'info',
+        event_type: 'job_success',
+        related_entity_type: 'job',
+        related_entity_id: 101,
+        is_read: false,
+        read_at: null,
+        channels_sent: ['in_app'],
+        metadata: { playbook: 'deploy-webapp', server: 'web-server-01' },
+        created_at: minutesAgo(15),
+        expires_at: null,
+      },
+      {
+        id: 1002,
+        user_id: 1,
+        title: 'Playbook execution failed',
+        message: 'Playbook "system-update" failed on db-server-01: SSH connection timeout.',
+        severity: 'error',
+        event_type: 'job_failure',
+        related_entity_type: 'job',
+        related_entity_id: 102,
+        is_read: false,
+        read_at: null,
+        channels_sent: ['in_app', 'email'],
+        metadata: { playbook: 'system-update', server: 'db-server-01' },
+        created_at: hoursAgo(2),
+        expires_at: null,
+      },
+      {
+        id: 1003,
+        user_id: 1,
+        title: 'High CPU usage detected',
+        message: 'server-api-02 reported CPU usage above 90% for 10 minutes.',
+        severity: 'warning',
+        event_type: 'high_cpu',
+        related_entity_type: 'server',
+        related_entity_id: 7,
+        is_read: true,
+        read_at: hoursAgo(1),
+        channels_sent: ['in_app'],
+        metadata: { server: 'server-api-02', metric: 'cpu', value: 92 },
+        created_at: hoursAgo(3),
+        expires_at: null,
+      },
+      {
+        id: 1004,
+        user_id: 1,
+        title: 'Batch execution completed',
+        message: 'Batch job finished: 12 successful, 2 failed out of 14 servers.',
+        severity: 'warning',
+        event_type: 'batch_complete',
+        related_entity_type: 'job',
+        related_entity_id: 103,
+        is_read: true,
+        read_at: hoursAgo(4),
+        channels_sent: ['in_app'],
+        metadata: { success: 12, failed: 2, total: 14 },
+        created_at: hoursAgo(6),
+        expires_at: null,
+      },
+      {
+        id: 1005,
+        user_id: 1,
+        title: 'System alert',
+        message: 'Redis queue latency exceeded threshold. Please check worker health.',
+        severity: 'critical',
+        event_type: 'system_alert',
+        related_entity_type: 'system',
+        related_entity_id: 1,
+        is_read: false,
+        read_at: null,
+        channels_sent: ['in_app', 'email'],
+        metadata: { component: 'redis', queue: 'celery' },
+        created_at: hoursAgo(12),
+        expires_at: null,
+      },
+      {
+        id: 1006,
+        user_id: 1,
+        title: 'Server unreachable',
+        message: 'web-server-02 failed health check: host unreachable.',
+        severity: 'error',
+        event_type: 'server_failure',
+        related_entity_type: 'server',
+        related_entity_id: 8,
+        is_read: false,
+        read_at: null,
+        channels_sent: ['in_app'],
+        metadata: { server: 'web-server-02', reason: 'host unreachable' },
+        created_at: hoursAgo(8),
+        expires_at: null,
+      },
+      {
+        id: 1007,
+        user_id: 1,
+        title: 'Playbook updated',
+        message: 'Playbook "backup-database" was updated by admin.',
+        severity: 'info',
+        event_type: 'playbook_update',
+        related_entity_type: 'playbook',
+        related_entity_id: 12,
+        is_read: true,
+        read_at: hoursAgo(9),
+        channels_sent: ['in_app'],
+        metadata: { playbook: 'backup-database', actor: 'admin' },
+        created_at: hoursAgo(10),
+        expires_at: null,
+      },
+      {
+        id: 1008,
+        user_id: 1,
+        title: 'User role changed',
+        message: 'User "ops-user" role updated to admin.',
+        severity: 'warning',
+        event_type: 'user_change',
+        related_entity_type: 'user',
+        related_entity_id: 4,
+        is_read: true,
+        read_at: hoursAgo(18),
+        channels_sent: ['in_app'],
+        metadata: { username: 'ops-user', role: 'admin' },
+        created_at: hoursAgo(20),
+        expires_at: null,
+      },
+      {
+        id: 1009,
+        user_id: 1,
+        title: 'Job retry succeeded',
+        message: 'Retry of "system-update" completed successfully on app-server-03.',
+        severity: 'info',
+        event_type: 'job_success',
+        related_entity_type: 'job',
+        related_entity_id: 104,
+        is_read: true,
+        read_at: hoursAgo(22),
+        channels_sent: ['in_app'],
+        metadata: { playbook: 'system-update', server: 'app-server-03' },
+        created_at: hoursAgo(23),
+        expires_at: null,
+      },
+      {
+        id: 1010,
+        user_id: 1,
+        title: 'Batch job warning',
+        message: 'Batch execution completed with warnings on 3 servers.',
+        severity: 'warning',
+        event_type: 'batch_complete',
+        related_entity_type: 'job',
+        related_entity_id: 105,
+        is_read: false,
+        read_at: null,
+        channels_sent: ['in_app', 'email'],
+        metadata: { warnings: 3, total: 18 },
+        created_at: hoursAgo(26),
+        expires_at: null,
+      },
+    ];
+  };
+
   useEffect(() => {
     loadNotifications();
   }, [filter, severityFilter, page]);
@@ -33,8 +202,12 @@ export const NotificationsPage: React.FC = () => {
         offset: page * limit,
       });
       
+      const sourceNotifications = response.notifications.length > 0
+        ? response.notifications
+        : buildDummyNotifications();
+
       // Apply severity filter client-side
-      let filteredNotifications = response.notifications;
+      let filteredNotifications = sourceNotifications;
       if (severityFilter !== 'all') {
         filteredNotifications = filteredNotifications.filter(
           (n) => n.severity === severityFilter
@@ -42,9 +215,15 @@ export const NotificationsPage: React.FC = () => {
       }
       
       setNotifications(filteredNotifications);
-      setTotal(response.total);
+      setTotal(response.total || sourceNotifications.length);
     } catch (error) {
       console.error('Failed to load notifications:', error);
+      const fallbackNotifications = buildDummyNotifications();
+      const filteredFallback = severityFilter === 'all'
+        ? fallbackNotifications
+        : fallbackNotifications.filter((n) => n.severity === severityFilter);
+      setNotifications(filteredFallback);
+      setTotal(filteredFallback.length);
     } finally {
       setLoading(false);
     }

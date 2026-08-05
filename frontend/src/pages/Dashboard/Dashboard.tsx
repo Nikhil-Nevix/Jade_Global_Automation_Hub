@@ -33,6 +33,13 @@ interface AnalyticsData {
   failureAnalysis: any;
 }
 
+interface GeneratedCsvContent {
+  headers: string[];
+  data: string[][];
+}
+
+let initialDashboardLoadPromise: Promise<void> | null = null;
+
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<JobStatistics | null>(null);
@@ -68,9 +75,60 @@ export const Dashboard: React.FC = () => {
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingCSV, setExportingCSV] = useState(false);
 
+  const runInitialDashboardLoadOnce = () => {
+    if (!initialDashboardLoadPromise) {
+      initialDashboardLoadPromise = (async () => {
+        await loadDashboardData();
+        await loadAnalyticsData();
+      })().finally(() => {
+        initialDashboardLoadPromise = null;
+      });
+    }
+
+    return initialDashboardLoadPromise;
+  };
+
+  const getRecentSuccessfulJobs = (): Job[] => {
+    return [...allJobs]
+      .filter((job) => job.status === 'success')
+      .sort((a, b) => {
+        const aDate = new Date(a.completed_at || a.created_at).getTime();
+        const bDate = new Date(b.completed_at || b.created_at).getTime();
+        return bDate - aDate;
+      });
+  };
+
+  const getGeneratedCsvForJob = async (
+    jobId: number,
+    preferredFilenamePatterns: RegExp[] = []
+  ): Promise<GeneratedCsvContent | null> => {
+    const filesResponse = await jobsApi.getGeneratedFiles(jobId);
+    const files = filesResponse.files || [];
+
+    if (files.length === 0) {
+      return null;
+    }
+
+    const csvFiles = files.filter((file: any) => file.type === 'csv');
+    if (csvFiles.length === 0) {
+      return null;
+    }
+
+    const preferredFile =
+      csvFiles.find((file: any) =>
+        preferredFilenamePatterns.some((pattern) => pattern.test(file.filename))
+      ) || csvFiles[0];
+
+    const fileContent = await jobsApi.downloadGeneratedFile(jobId, preferredFile.path, 'view');
+    if (!fileContent?.headers || !fileContent?.data) {
+      return null;
+    }
+
+    return fileContent;
+  };
+
   useEffect(() => {
-    loadDashboardData();
-    loadAnalyticsData();
+    runInitialDashboardLoadOnce();
   }, []);
 
   // Load compliance data after allJobs is populated
@@ -80,6 +138,22 @@ export const Dashboard: React.FC = () => {
       loadNetworkDeviceComplianceData();
     }
   }, [allJobs]);
+
+  useEffect(() => {
+    if (isDemoMode || analyticsLoading) return;
+
+    const hasAnalyticsData =
+      (analyticsData?.successTrends?.trends && analyticsData.successTrends.trends.length > 0) ||
+      (analyticsData?.executionTimes?.playbooks && analyticsData.executionTimes.playbooks.length > 0) ||
+      (analyticsData?.failureAnalysis?.summary && (analyticsData.failureAnalysis.summary.total_jobs || 0) > 0);
+
+    if (!hasAnalyticsData) {
+      const fallbackData = buildFallbackAnalytics(allJobs, selectedTimeRange);
+      if (fallbackData) {
+        setAnalyticsData(fallbackData);
+      }
+    }
+  }, [allJobs, analyticsData, analyticsLoading, isDemoMode, selectedTimeRange, stats]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -144,14 +218,25 @@ export const Dashboard: React.FC = () => {
         jobsApi.getExecutionTimeAnalytics(params),
         jobsApi.getFailureAnalysis({ ...params, group_by: 'both' }),
       ]);
-      
-      setAnalyticsData({
-        successTrends,
-        executionTimes,
-        failureAnalysis,
-      });
+
+      const apiData = { successTrends, executionTimes, failureAnalysis };
+      const apiHasData =
+        (successTrends?.trends && successTrends.trends.length > 0) ||
+        (executionTimes?.playbooks && executionTimes.playbooks.length > 0) ||
+        (failureAnalysis?.summary && (failureAnalysis.summary.total_jobs || 0) > 0);
+
+      if (apiHasData) {
+        setAnalyticsData(apiData);
+      } else {
+        const fallbackData = buildFallbackAnalytics(allJobs, selectedTimeRange);
+        setAnalyticsData(fallbackData || apiData);
+      }
     } catch (error) {
       console.error('Failed to load analytics data:', error);
+      const fallbackData = buildFallbackAnalytics(allJobs, selectedTimeRange);
+      if (fallbackData) {
+        setAnalyticsData(fallbackData);
+      }
     } finally {
       setAnalyticsLoading(false);
     }
@@ -159,68 +244,46 @@ export const Dashboard: React.FC = () => {
 
   const loadComplianceData = async () => {
     try {
-      console.log('🔍 Loading compliance data...');
-      console.log('📊 Total jobs available:', allJobs.length);
-      
-      // ⚠️ HARDCODED JOB ID - Change this to use a different job's compliance data
-      const targetJobId = '7a83723d-7444-4f71-8a03-5c53e3a4ac31';
-      const targetJob = allJobs.find(job => job.job_id === targetJobId);
-      
-      console.log('🎯 Looking for job with job_id:', targetJobId);
-      
-      if (!targetJob) {
-        console.log('⚠️ Target job not found - setting compliance data to null');
-        console.log('Available job IDs:', allJobs.map(j => j.job_id).slice(0, 5));
-        setComplianceData(null);
-        return;
-      }
-      
-      console.log('✅ Found target job:', {
-        id: targetJob.id,
-        job_id: targetJob.job_id,
-        playbook: targetJob.playbook?.name,
-        status: targetJob.status,
-        created_at: targetJob.created_at
-      });
-      
-      // Fetch CSV data for this job
-      console.log('📥 Fetching CSV data for job ID:', targetJob.id);
-      const csvData = await jobsApi.getRpmCsv(targetJob.id);
-      console.log('📊 CSV data received:', {
-        headers: csvData.headers,
-        rowCount: csvData.data.length
-      });
-      
-      // Find LAG column index
-      const lagColumnIndex = csvData.headers.findIndex(h => h.toUpperCase() === 'LAG');
-      console.log('🔢 LAG column index:', lagColumnIndex);
-      
-      if (lagColumnIndex === -1) {
-        console.log('⚠️ LAG column not found in CSV');
-        setComplianceData(null);
-        return;
-      }
-      
-      // Calculate compliance
-      let compliant = 0;
-      let nonCompliant = 0;
-      
-      csvData.data.forEach((row, idx) => {
-        const lagValue = row[lagColumnIndex] || '';
-        // Compliant if LAG is 0 or empty
-        if (!lagValue || lagValue.trim() === '' || lagValue.trim() === '0') {
-          compliant++;
-          if (idx < 3) console.log(`Row ${idx}: LAG="${lagValue}" → COMPLIANT`);
-        } else {
-          // Everything else (including N-1, N-2, etc.) is non-compliant
-          nonCompliant++;
-          if (idx < 3) console.log(`Row ${idx}: LAG="${lagValue}" → NON-COMPLIANT`);
+      const candidateJobs = getRecentSuccessfulJobs().slice(0, 20);
+      for (const job of candidateJobs) {
+        try {
+          // Fast path: use pre-parsed result_summary if available
+          const reportsData = await jobsApi.getJobReports(job.id);
+          const summary = reportsData?.result_summary;
+          if (summary && summary.total > 0) {
+            setComplianceData({ compliant: summary.compliant, nonCompliant: summary.non_compliant });
+            setComplianceJobId(job.id);
+            return;
+          }
+
+          // Fallback: scan generated files for a CSV with a LAG column
+          const csvData = await getGeneratedCsvForJob(job.id, [/rpm/i, /lag/i, /compliance/i]);
+          if (!csvData) continue;
+
+          const lagColumnIndex = csvData.headers.findIndex((header) => header.toUpperCase() === 'LAG');
+          if (lagColumnIndex === -1) continue;
+
+          let compliant = 0;
+          let nonCompliant = 0;
+          csvData.data.forEach((row) => {
+            const lagValue = row[lagColumnIndex] || '';
+            if (!lagValue || lagValue.trim() === '' || lagValue.trim() === '0') {
+              compliant++;
+            } else {
+              nonCompliant++;
+            }
+          });
+
+          setComplianceData({ compliant, nonCompliant });
+          setComplianceJobId(job.id);
+          return;
+        } catch (jobError) {
+          console.warn(`Skipping job ${job.id} for compliance card:`, jobError);
         }
-      });
-      
-      console.log('✅ Compliance calculation complete:', { compliant, nonCompliant });
-      setComplianceData({ compliant, nonCompliant });
-      setComplianceJobId(targetJob.id);
+      }
+
+      setComplianceData(null);
+      setComplianceJobId(null);
     } catch (error) {
       console.error('❌ Failed to load compliance data:', error);
       setComplianceData(null);
@@ -230,90 +293,43 @@ export const Dashboard: React.FC = () => {
 
   const loadNetworkDeviceComplianceData = async () => {
     try {
-      console.log('🔍 Loading network device compliance data...');
-      console.log('📊 Total jobs available:', allJobs.length);
-      
-      // ⚠️ HARDCODED JOB ID - Change this to use a different job's compliance data
-      const targetJobId = 'c79b5646-97cc-40c5-a94a-a341bf26cb5b';
-      const targetJob = allJobs.find(job => job.job_id === targetJobId);
-      
-      console.log('🎯 Looking for job with job_id:', targetJobId);
-      
-      if (!targetJob) {
-        console.log('⚠️ Target job not found - setting network device compliance data to null');
-        console.log('Available job IDs:', allJobs.map(j => j.job_id).slice(0, 5));
-        setNetworkDeviceComplianceData(null);
-        return;
-      }
-      
-      console.log('✅ Found target job:', {
-        id: targetJob.id,
-        job_id: targetJob.job_id,
-        playbook: targetJob.playbook?.name,
-        status: targetJob.status,
-        created_at: targetJob.created_at
-      });
-      
-      // Fetch generated files for this job
-      console.log('📥 Fetching generated files for job ID:', targetJob.id);
-      const filesResponse = await jobsApi.getGeneratedFiles(targetJob.id);
-      const files = filesResponse.files || [];
-      console.log('📊 Generated files received:', files.length, 'files');
-      
-      if (files.length === 0) {
-        console.log('⚠️ No generated files found for this job');
-        setNetworkDeviceComplianceData(null);
-        return;
-      }
-      
-      console.log('📁 Available files:', files.map((f: any) => f.filename).join(', '));
-      
-      // Find CSV file
-      const csvFile = files.find((f: any) => f.type === 'csv' && f.filename.includes('Firmware_Compliance'));
-      if (!csvFile) {
-        console.log('⚠️ No compliance CSV file found in generated files');
-        console.log('Available files:', files.map((f: any) => f.filename));
-        setNetworkDeviceComplianceData(null);
-        return;
-      }
-      
-      console.log('📄 Found CSV file:', csvFile.filename);
-      
-      // Download and parse the CSV file (use 'view' action to get structured data)
-      const fileContent = await jobsApi.downloadGeneratedFile(targetJob.id, csvFile.path, 'view');
-      console.log('📥 CSV file content received:', fileContent);
-      
-      // Find Compliance Status column and count values
-      const complianceStatusCounts: Record<string, number> = {};
-      
-      if (fileContent.headers && fileContent.data) {
-        const complianceColIndex = fileContent.headers.findIndex((h: string) => 
-          h.toUpperCase() === 'COMPLIANCE STATUS'
-        );
-        
-        if (complianceColIndex === -1) {
-          console.log('⚠️ Compliance Status column not found in CSV');
-          console.log('Available headers:', fileContent.headers);
-          setNetworkDeviceComplianceData(null);
+      const candidateJobs = getRecentSuccessfulJobs().slice(0, 20);
+      for (const job of candidateJobs) {
+        try {
+          // Fast path: use pre-parsed result_summary status_breakdown if available
+          const reportsData = await jobsApi.getJobReports(job.id);
+          const summary = reportsData?.result_summary;
+          if (summary && summary.total > 0 && summary.status_breakdown && Object.keys(summary.status_breakdown).length > 0) {
+            setNetworkDeviceComplianceData(summary.status_breakdown);
+            setNetworkDeviceComplianceJobId(job.id);
+            return;
+          }
+
+          // Fallback: scan generated files for a CSV with a COMPLIANCE STATUS column
+          const fileContent = await getGeneratedCsvForJob(job.id, [/firmware_compliance/i, /compliance/i]);
+          if (!fileContent) continue;
+
+          const complianceColIndex = fileContent.headers.findIndex(
+            (header: string) => header.toUpperCase() === 'COMPLIANCE STATUS'
+          );
+          if (complianceColIndex === -1) continue;
+
+          const complianceStatusCounts: Record<string, number> = {};
+          fileContent.data.forEach((row: string[]) => {
+            const status = row[complianceColIndex] || 'Unknown';
+            complianceStatusCounts[status] = (complianceStatusCounts[status] || 0) + 1;
+          });
+
+          setNetworkDeviceComplianceData(complianceStatusCounts);
+          setNetworkDeviceComplianceJobId(job.id);
           return;
+        } catch (jobError) {
+          console.warn(`Skipping job ${job.id} for network compliance card:`, jobError);
         }
-        
-        console.log('🔢 Compliance Status column index:', complianceColIndex);
-        console.log('📊 Total rows to process:', fileContent.data.length);
-        
-        // Count each unique compliance status
-        fileContent.data.forEach((row: string[], idx: number) => {
-          const status = row[complianceColIndex] || 'Unknown';
-          complianceStatusCounts[status] = (complianceStatusCounts[status] || 0) + 1;
-          if (idx < 5) console.log(`Row ${idx}: Status="${status}"`);
-        });
-      } else {
-        console.log('⚠️ File content structure unexpected:', fileContent);
       }
-      
-      console.log('✅ Network device compliance calculation complete:', complianceStatusCounts);
-      setNetworkDeviceComplianceData(complianceStatusCounts);
-      setNetworkDeviceComplianceJobId(targetJob.id);
+
+      setNetworkDeviceComplianceData(null);
+      setNetworkDeviceComplianceJobId(null);
     } catch (error) {
       console.error('❌ Failed to load network device compliance data:', error);
       setNetworkDeviceComplianceData(null);
@@ -394,6 +410,231 @@ export const Dashboard: React.FC = () => {
 
   const toggleAutoRefresh = () => {
     setAutoRefresh(!autoRefresh);
+  };
+
+  const formatDuration = (seconds: number): string => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h`;
+  };
+
+  const resolveAnalyticsRange = (range: TimeRange, customRange: { start: string; end: string }) => {
+    const now = new Date();
+    let start = new Date(now);
+    let end = new Date(now);
+
+    if (range === 'custom' && customRange.start && customRange.end) {
+      start = new Date(customRange.start);
+      end = new Date(customRange.end);
+      end.setHours(23, 59, 59, 999);
+    } else if (range === '7days') {
+      start.setDate(now.getDate() - 7);
+    } else if (range === '3months') {
+      start.setMonth(now.getMonth() - 3);
+    } else {
+      start.setDate(now.getDate() - 30);
+    }
+
+    return { start, end };
+  };
+
+  const buildFallbackAnalytics = (jobs: Job[], range: TimeRange) => {
+    const { start, end } = resolveAnalyticsRange(range, customDateRange);
+    const baseJobs = jobs.length > 0 ? jobs : recentJobs;
+    const jobsInRange = baseJobs.filter((job) => {
+      const createdAt = new Date(job.created_at);
+      return createdAt >= start && createdAt <= end;
+    });
+
+    const sourceJobs = jobsInRange.length > 0 ? jobsInRange : baseJobs;
+    if (sourceJobs.length === 0) {
+      if (!stats || stats.total === 0) {
+        return null;
+      }
+
+      const today = new Date();
+      const period = today.toLocaleDateString('en-CA', { timeZone: getUserTimezone() });
+      return {
+        successTrends: {
+          time_range: range,
+          granularity: 'daily',
+          start_date: start.toISOString(),
+          end_date: end.toISOString(),
+          trends: [
+            {
+              period,
+              total_jobs: stats.total,
+              successful_jobs: stats.success,
+              failed_jobs: stats.failed,
+              success_rate: stats.success_rate,
+            },
+          ],
+        },
+        executionTimes: {
+          time_range: range,
+          start_date: start.toISOString(),
+          end_date: end.toISOString(),
+          playbooks: [],
+        },
+        failureAnalysis: {
+          summary: {
+            time_range: range,
+            start_date: start.toISOString(),
+            end_date: end.toISOString(),
+            total_jobs: stats.total,
+            total_failures: stats.failed,
+            failure_rate: stats.total > 0 ? Math.round((stats.failed / stats.total) * 10000) / 100 : 0,
+          },
+          by_playbook: [],
+          by_server: [],
+        },
+      };
+    }
+
+    const timezone = getUserTimezone();
+    const formatDateKey = (date: Date) =>
+      date.toLocaleDateString('en-CA', { timeZone: timezone });
+
+    const trendsMap = new Map<string, { total: number; success: number; failed: number }>();
+    sourceJobs.forEach((job) => {
+      const key = formatDateKey(new Date(job.created_at));
+      if (!trendsMap.has(key)) {
+        trendsMap.set(key, { total: 0, success: 0, failed: 0 });
+      }
+      const entry = trendsMap.get(key)!;
+      entry.total += 1;
+      if (job.status === 'success') entry.success += 1;
+      if (job.status === 'failed') entry.failed += 1;
+    });
+
+    const trends = Array.from(trendsMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, data]) => ({
+        period,
+        total_jobs: data.total,
+        successful_jobs: data.success,
+        failed_jobs: data.failed,
+        success_rate: data.total > 0 ? Math.round((data.success / data.total) * 10000) / 100 : 0,
+      }));
+
+    const playbookNameById = new Map<number, string>();
+    const serverNameById = new Map<number, string>();
+    sourceJobs.forEach((job) => {
+      if (job.playbook?.name) {
+        playbookNameById.set(job.playbook_id, job.playbook.name);
+      }
+      if (job.server?.hostname) {
+        serverNameById.set(job.server_id, job.server.hostname);
+      }
+    });
+
+    const executionMap = new Map<number, { durations: number[]; total: number }>();
+    sourceJobs.forEach((job) => {
+      if (!job.started_at || !job.completed_at) return;
+      if (job.status !== 'success' && job.status !== 'failed') return;
+      const startTime = new Date(job.started_at).getTime();
+      const endTime = new Date(job.completed_at).getTime();
+      const durationSeconds = (endTime - startTime) / 1000;
+      if (!Number.isFinite(durationSeconds) || durationSeconds < 0) return;
+
+      if (!executionMap.has(job.playbook_id)) {
+        executionMap.set(job.playbook_id, { durations: [], total: 0 });
+      }
+      const entry = executionMap.get(job.playbook_id)!;
+      entry.durations.push(durationSeconds);
+      entry.total += 1;
+    });
+
+    const executionPlaybooks = Array.from(executionMap.entries()).map(([playbookId, data]) => {
+      const total = data.total;
+      const avg = data.durations.reduce((sum, value) => sum + value, 0) / total;
+      const min = Math.min(...data.durations);
+      const max = Math.max(...data.durations);
+      const playbookName = playbookNameById.get(playbookId) || `Playbook ${playbookId}`;
+      return {
+        playbook_name: playbookName,
+        playbook_id: playbookId,
+        total_executions: total,
+        avg_duration_seconds: Math.round(avg * 100) / 100,
+        min_duration_seconds: Math.round(min),
+        max_duration_seconds: Math.round(max),
+        avg_duration_formatted: formatDuration(avg),
+      };
+    });
+
+    executionPlaybooks.sort((a, b) => b.total_executions - a.total_executions);
+
+    const failedJobs = sourceJobs.filter((job) => job.status === 'failed');
+    const playbookFailureMap = new Map<number, { count: number; servers: Set<number> }>();
+    const serverFailureMap = new Map<number, { count: number; playbooks: Set<number> }>();
+
+    failedJobs.forEach((job) => {
+      if (!playbookFailureMap.has(job.playbook_id)) {
+        playbookFailureMap.set(job.playbook_id, { count: 0, servers: new Set() });
+      }
+      const playbookEntry = playbookFailureMap.get(job.playbook_id)!;
+      playbookEntry.count += 1;
+      playbookEntry.servers.add(job.server_id);
+
+      if (!serverFailureMap.has(job.server_id)) {
+        serverFailureMap.set(job.server_id, { count: 0, playbooks: new Set() });
+      }
+      const serverEntry = serverFailureMap.get(job.server_id)!;
+      serverEntry.count += 1;
+      serverEntry.playbooks.add(job.playbook_id);
+    });
+
+    const failuresByPlaybook = Array.from(playbookFailureMap.entries())
+      .map(([playbookId, entry]) => ({
+        playbook_name: playbookNameById.get(playbookId) || `Playbook ${playbookId}`,
+        playbook_id: playbookId,
+        failure_count: entry.count,
+        affected_servers: entry.servers.size,
+      }))
+      .sort((a, b) => b.failure_count - a.failure_count);
+
+    const failuresByServer = Array.from(serverFailureMap.entries())
+      .map(([serverId, entry]) => ({
+        server_hostname: serverNameById.get(serverId) || `Server ${serverId}`,
+        server_id: serverId,
+        failure_count: entry.count,
+        affected_playbooks: entry.playbooks.size,
+      }))
+      .sort((a, b) => b.failure_count - a.failure_count);
+
+    const totalJobs = sourceJobs.length;
+    const totalFailures = failedJobs.length;
+
+    return {
+      successTrends: {
+        time_range: range,
+        granularity: 'daily',
+        start_date: start.toISOString(),
+        end_date: end.toISOString(),
+        trends,
+      },
+      executionTimes: {
+        time_range: range,
+        start_date: start.toISOString(),
+        end_date: end.toISOString(),
+        playbooks: executionPlaybooks,
+      },
+      failureAnalysis: {
+        summary: {
+          time_range: range,
+          start_date: start.toISOString(),
+          end_date: end.toISOString(),
+          total_jobs: totalJobs,
+          total_failures: totalFailures,
+          failure_rate: totalJobs > 0 ? Math.round((totalFailures / totalJobs) * 10000) / 100 : 0,
+        },
+        by_playbook: failuresByPlaybook,
+        by_server: failuresByServer,
+      },
+    };
   };
 
   // Helper function to filter jobs by time range

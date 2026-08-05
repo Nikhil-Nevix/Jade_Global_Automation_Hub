@@ -1,0 +1,21 @@
+[Unit]
+Description=InfraAnsible Vulnerability FastAPI Backend (Uvicorn)
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+User=svc-ansible
+Group=svc-ansible
+WorkingDirectory=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend
+EnvironmentFile=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/.env
+ExecStart=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/venv/bin/uvicorn \
+    app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 1 \
+    --log-level info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

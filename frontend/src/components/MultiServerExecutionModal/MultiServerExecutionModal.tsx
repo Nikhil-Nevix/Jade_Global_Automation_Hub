@@ -59,10 +59,10 @@ export const MultiServerExecutionModal: React.FC<MultiServerExecutionModalProps>
     }
   };
 
-  // Get unique tags from all servers
+  // Get unique tag names from all servers
   const allTags = Array.from(
     new Set(
-      servers.flatMap(s => s.tags || [])
+      servers.flatMap(s => (s.tags || []).map(t => t.name))
     )
   ).sort();
 
@@ -72,10 +72,10 @@ export const MultiServerExecutionModal: React.FC<MultiServerExecutionModalProps>
       server.hostname.toLowerCase().includes(searchTerm.toLowerCase()) ||
       server.ip_address.includes(searchTerm);
     
-    const matchesTag = 
-      filterTag === 'all' || 
-      (server.tags && server.tags.includes(filterTag));
-    
+    const matchesTag =
+      filterTag === 'all' ||
+      (server.tags && server.tags.some(t => t.name === filterTag));
+
     return matchesSearch && matchesTag;
   });
 
@@ -96,7 +96,7 @@ export const MultiServerExecutionModal: React.FC<MultiServerExecutionModalProps>
   };
 
   const handleSelectByTag = (tag: string) => {
-    const serversWithTag = servers.filter(s => s.tags && s.tags.includes(tag));
+    const serversWithTag = servers.filter(s => s.tags && s.tags.some(t => t.name === tag));
     const tagServerIds = serversWithTag.map(s => s.id);
     setSelectedServerIds(prev => {
       const newSet = new Set([...prev, ...tagServerIds]);
@@ -245,12 +245,12 @@ export const MultiServerExecutionModal: React.FC<MultiServerExecutionModalProps>
                       </div>
                       {server.tags && server.tags.length > 0 && (
                         <div className="flex gap-1">
-                          {server.tags.slice(0, 2).map((tag, idx) => (
+                          {server.tags.slice(0, 2).map((tag) => (
                             <span
-                              key={idx}
+                              key={tag.id}
                               className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs"
                             >
-                              {tag}
+                              {tag.name}
                             </span>
                           ))}
                           {server.tags.length > 2 && (

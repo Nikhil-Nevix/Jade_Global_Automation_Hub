@@ -19,3 +19,8 @@ node_modules/
 
 #query 
 query
+
+# Large backup archives
+version1.zip
+version2.zip
+*.zip

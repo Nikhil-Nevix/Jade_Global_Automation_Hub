@@ -50,7 +50,7 @@ Make sure you have:
 - Daily startup (after initial setup): **2-3 minutes**
 
 **What You'll Install:**
-- Python 3.9+, Node.js 18+, MariaDB 10.3+, Redis 5.0+, Ansible 2.9+, Git, Development Tools
+- Python 3.9+, Node.js 18+, MySQL 8.4.9 (service: mysqld), Redis 5.0+, Ansible 2.9+, Git, Development Tools
 
 ---
 
@@ -162,28 +162,28 @@ pip3 --version
 
 ---
 
-## B. INSTALL AND CONFIGURE MYSQL/MARIADB
+## B. INSTALL AND CONFIGURE MYSQL
 
-### 1. Install MariaDB Server
+### 1. Install MySQL Server
+
+> **Note:** This server runs **MySQL Community 8.4.9** (not MariaDB). Use `mysqld` as the service name in all systemctl commands.
 
 ```bash
-# For Rocky Linux / RHEL / CentOS
-sudo dnf install -y mariadb-server mariadb
+# For Oracle Linux / RHEL / CentOS — install MySQL 8.4 Community repo
+sudo dnf install -y mysql84-community-release
+sudo dnf install -y mysql-community-server
 
-# For Ubuntu / Debian
-# sudo apt install -y mariadb-server mariadb-client
-
-# Start and enable MariaDB
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
+# Start and enable MySQL
+sudo systemctl start mysqld
+sudo systemctl enable mysqld
 
 # Verify it's running
-sudo systemctl status mariadb
+sudo systemctl status mysqld
 ```
 
 **✅ Expected:** Active (running)
 
-### 2. Secure MariaDB Installation
+### 2. Secure MySQL Installation
 
 ```bash
 # Run security script
@@ -199,21 +199,20 @@ sudo mysql_secure_installation
 - Remove test database? `Y`
 - Reload privilege tables? `Y`
 
-### 3. Configure MariaDB for Network Access (Optional)
+### 3. Configure MySQL for Network Access (Optional)
 
 ```bash
-# Edit MariaDB configuration
-sudo vim /etc/my.cnf.d/mariadb-server.cnf
-# OR for Ubuntu: sudo vim /etc/mysql/mariadb.conf.d/50-server.cnf
+# Edit MySQL configuration
+sudo vim /etc/my.cnf
 
 # Find the line with 'bind-address' and change to:
 # bind-address = 0.0.0.0
 
-# Save and restart MariaDB
-sudo systemctl restart mariadb
+# Save and restart MySQL
+sudo systemctl restart mysqld
 ```
 
-### 4. Configure Firewall for MariaDB (Optional - for remote access)
+### 4. Configure Firewall for MySQL (Optional - for remote access)
 
 ```bash
 # For firewalld (Rocky Linux / RHEL / CentOS)
@@ -407,15 +406,15 @@ sudo setenforce 0
 
 ## A. DATABASE SETUP
 
-### 1. Verify MySQL/MariaDB is Running
+### 1. Verify MySQL is Running
 
 ```bash
-# Check if MySQL/MariaDB is running
-sudo systemctl status mariadb
+# Check if MySQL is running
+sudo systemctl status mysqld
 
 # If not running, start it
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
+sudo systemctl start mysqld
+sudo systemctl enable mysqld
 ```
 
 ### 2. Create Database and User
@@ -590,7 +589,7 @@ curl http://localhost:5000/api/health
 
 ```bash
 # Check Database
-sudo systemctl status mariadb
+sudo systemctl status mysqld
 
 # Check Redis
 sudo systemctl status redis
@@ -602,7 +601,7 @@ sudo systemctl enable redis
 ```
 
 **✅ Expected:**
-- MariaDB: Active (running)
+- MySQL: Active (running)
 - Redis: Active (running)
 - `redis-cli ping` returns: PONG
 
@@ -921,7 +920,7 @@ sudo firewall-cmd --list-ports
 **Solution:**
 ```bash
 # On Linux VM
-sudo systemctl status mariadb
+sudo systemctl status mysqld
 mysql -u infra_user -pinfra_pass123 infra_automation -e "SELECT 1;"
 
 # Check .env file
@@ -1101,7 +1100,7 @@ sudo dnf install -y redis
 
 # For MySQL
 which mysql
-sudo dnf install -y mariadb
+sudo dnf install -y mysql-community-client
 ```
 
 ---
@@ -1113,11 +1112,11 @@ sudo dnf install -y mariadb
 **Solution:**
 ```bash
 # Enable services to start on boot
-sudo systemctl enable mariadb
+sudo systemctl enable mysqld
 sudo systemctl enable redis
 
 # Verify they're enabled
-sudo systemctl is-enabled mariadb
+sudo systemctl is-enabled mysqld
 sudo systemctl is-enabled redis
 ```
 

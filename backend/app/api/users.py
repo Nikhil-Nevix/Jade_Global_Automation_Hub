@@ -1,300 +1,139 @@
-"""
-User API Endpoints
-Handles user management operations
-"""
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from marshmallow import ValidationError
-from app.extensions import db
-from app.services.auth_service import auth_service
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.deps import get_current_user, require_role, has_permission
+from app.core.security import hash_password
 from app.models import User
-from app.schemas import (
-    user_schema, users_schema, user_update_schema, error_schema
-)
+from app.schemas import UserOut, UserCreate, UserUpdate, TimezoneUpdate, MessageResponse
+from app.services import auth_service
+from app.services.auth_service import AuthError
 
-users_bp = Blueprint('users', __name__, url_prefix='/api/users')
+router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-@users_bp.route('', methods=['GET'])
-@jwt_required()
-def get_users():
-    """
-    Get all users (admin only)
-    
-    Query Parameters:
-        role: str
-        is_active: bool
-        page: int
-        per_page: int
-    
-    Returns:
-        List of users with pagination
-    """
+@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: UserCreate,
+    current_user: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only user creation (the frontend UsersPage 'add user' flow)."""
     try:
-        # Get current user
-        current_user_id = get_jwt_identity()
-        current_user = auth_service.get_current_user(current_user_id)
-        
-        # Check permission
-        if not auth_service.check_permission(current_user, 'admin'):
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Insufficient permissions to view users'
-            })), 403
-        
-        # Build query
-        query = User.query
-        
-        # Apply filters
-        if request.args.get('role'):
-            query = query.filter_by(role=request.args.get('role'))
-        
-        if request.args.get('is_active'):
-            is_active = request.args.get('is_active').lower() == 'true'
-            query = query.filter_by(is_active=is_active)
-        
-        # Pagination
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
-        
-        pagination = query.order_by(User.created_at.desc()).paginate(
-            page=page,
-            per_page=per_page,
-            error_out=False
+        user = await auth_service.register_user(
+            db, username=payload.username, email=payload.email,
+            password=payload.password, role=payload.role or "user",
         )
-        
-        return jsonify({
-            'items': users_schema.dump(pagination.items),
-            'pagination': {
-                'page': pagination.page,
-                'per_page': pagination.per_page,
-                'total': pagination.total,
-                'pages': pagination.pages
-            }
-        }), 200
-    
-    except Exception as err:
-        return jsonify(error_schema.dump({
-            'error': 'internal_error',
-            'message': 'An error occurred while fetching users'
-        })), 500
+    except AuthError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return UserOut.model_validate(user)
 
 
-@users_bp.route('/<int:user_id>', methods=['GET'])
-@jwt_required()
-def get_user(user_id):
-    """
-    Get a specific user by ID (admin only, or self)
-    
-    Returns:
-        User details
-    """
-    try:
-        # Get current user
-        current_user_id = get_jwt_identity()
-        current_user = auth_service.get_current_user(current_user_id)
-        
-        # Check permission (admin or viewing own profile)
-        if not auth_service.check_permission(current_user, 'admin') and current_user_id != user_id:
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Insufficient permissions to view this user'
-            })), 403
-        
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify(error_schema.dump({
-                'error': 'not_found',
-                'message': f'User with ID {user_id} not found'
-            })), 404
-        
-        return jsonify(user_schema.dump(user)), 200
-    
-    except Exception as err:
-        return jsonify(error_schema.dump({
-            'error': 'internal_error',
-            'message': 'An error occurred while fetching user'
-        })), 500
+@router.get("")
+async def list_users(
+    role: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(User)
+    count_stmt = select(func.count(User.id))
+    if role:
+        stmt = stmt.where(User.role == role)
+        count_stmt = count_stmt.where(User.role == role)
+    if is_active is not None:
+        stmt = stmt.where(User.is_active == is_active)
+        count_stmt = count_stmt.where(User.is_active == is_active)
+
+    total = (await db.execute(count_stmt)).scalar_one()
+    stmt = stmt.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    users = (await db.execute(stmt)).scalars().all()
+
+    return {
+        "items": [UserOut.model_validate(u) for u in users],
+        "pagination": {"page": page, "per_page": per_page, "total": total,
+                       "pages": (total + per_page - 1) // per_page},
+    }
 
 
-@users_bp.route('/<int:user_id>', methods=['PUT'])
-@jwt_required()
-def update_user(user_id):
-    """
-    Update user details (admin only, or self for limited fields)
-    
-    Request Body:
-        email: str
-        role: str (admin only)
-        is_active: bool (admin only)
-    
-    Returns:
-        Updated user
-    """
-    try:
-        # Get current user
-        current_user_id = get_jwt_identity()
-        current_user = auth_service.get_current_user(current_user_id)
-        
-        # Get target user
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify(error_schema.dump({
-                'error': 'not_found',
-                'message': f'User with ID {user_id} not found'
-            })), 404
-        
-        # Validate request
-        data = user_update_schema.load(request.get_json())
-        
-        # Check permissions
-        is_admin = auth_service.check_permission(current_user, 'admin')
-        is_self = current_user_id == user_id
-        
-        if not is_admin and not is_self:
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Insufficient permissions to update this user'
-            })), 403
-        
-        # Only admins can change role and is_active
-        if not is_admin:
-            if 'role' in data or 'is_active' in data:
-                return jsonify(error_schema.dump({
-                    'error': 'forbidden',
-                    'message': 'Only admins can change role or active status'
-                })), 403
-        
-        # Update fields
-        if 'email' in data:
-            # Check for duplicate email
-            existing = User.query.filter_by(email=data['email']).first()
-            if existing and existing.id != user_id:
-                return jsonify(error_schema.dump({
-                    'error': 'validation_error',
-                    'message': 'Email already in use'
-                })), 400
-            user.email = data['email']
-        
-        if 'role' in data and is_admin:
-            user.role = data['role']
-        
-        if 'is_active' in data and is_admin:
-            user.is_active = data['is_active']
-        
-        if 'password' in data:
-            user.set_password(data['password'])
-        
-        db.session.commit()
-        
-        return jsonify(user_schema.dump(user)), 200
-    
-    except ValidationError as err:
-        return jsonify(error_schema.dump({
-            'error': 'validation_error',
-            'message': 'Invalid request data',
-            'details': err.messages
-        })), 400
-    
-    except Exception as err:
-        return jsonify(error_schema.dump({
-            'error': 'internal_error',
-            'message': 'An error occurred while updating user'
-        })), 500
+@router.get("/{user_id}", response_model=UserOut)
+async def get_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not has_permission(current_user, "admin") and current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
 
 
-@users_bp.route('/me/timezone', methods=['PATCH'])
-@jwt_required()
-def update_timezone():
-    """
-    Update current user's timezone preference
-    
-    Request Body:
-        timezone: str (e.g., 'UTC', 'America/New_York', 'Asia/Kolkata')
-    
-    Returns:
-        Updated user data
-    """
-    try:
-        # Get current user
-        current_user_id = get_jwt_identity()
-        current_user = auth_service.get_current_user(current_user_id)
-        
-        # Get timezone from request
-        data = request.get_json()
-        timezone = data.get('timezone')
-        
-        if not timezone:
-            return jsonify(error_schema.dump({
-                'error': 'validation_error',
-                'message': 'Timezone is required'
-            })), 400
-        
-        # Validate timezone format (basic check)
-        if len(timezone) > 50:
-            return jsonify(error_schema.dump({
-                'error': 'validation_error',
-                'message': 'Timezone string is too long'
-            })), 400
-        
-        # Update timezone
-        current_user.timezone = timezone
-        db.session.commit()
-        
-        return jsonify(user_schema.dump(current_user)), 200
-    
-    except Exception as err:
-        return jsonify(error_schema.dump({
-            'error': 'internal_error',
-            'message': 'An error occurred while updating timezone'
-        })), 500
+@router.put("/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    is_admin = has_permission(current_user, "admin")
+    is_self = current_user.id == user_id
+    if not is_admin and not is_self:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    # Only admins may change role / active status (used for "upgrade user to admin")
+    if (payload.role is not None or payload.is_active is not None) and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can change role or status")
+
+    if payload.email is not None:
+        dup = (await db.execute(select(User).where(User.email == payload.email.lower()))).scalar_one_or_none()
+        if dup and dup.id != user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
+        user.email = payload.email.lower()
+    if payload.role is not None and is_admin:
+        user.role = payload.role
+    if payload.is_active is not None and is_admin:
+        user.is_active = payload.is_active
+    if payload.password is not None:
+        user.password_hash = hash_password(payload.password)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
-@users_bp.route('/<int:user_id>', methods=['DELETE'])
-@jwt_required()
-def delete_user(user_id):
-    """
-    Delete/deactivate user (super_admin only)
-    
-    Returns:
-        Success message
-    """
-    try:
-        # Get current user
-        current_user_id = get_jwt_identity()
-        current_user = auth_service.get_current_user(current_user_id)
-        
-        # Check permission - only super_admin can delete users
-        if current_user.role != 'super_admin':
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Only super admins can delete users'
-            })), 403
-        
-        # Prevent self-deletion
-        if current_user_id == user_id:
-            return jsonify(error_schema.dump({
-                'error': 'forbidden',
-                'message': 'Cannot delete your own account'
-            })), 403
-        
-        # Get user
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify(error_schema.dump({
-                'error': 'not_found',
-                'message': f'User with ID {user_id} not found'
-            })), 404
-        
-        # Hard delete (cascade will delete associated jobs)
-        db.session.delete(user)
-        db.session.commit()
-        
-        return jsonify({'message': 'User and associated jobs deleted successfully'}), 200
-    
-    except Exception as err:
-        return jsonify(error_schema.dump({
-            'error': 'internal_error',
-            'message': 'An error occurred while deleting user'
-        })), 500
+@router.patch("/me/timezone", response_model=UserOut)
+async def update_timezone(
+    payload: TimezoneUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    current_user.timezone = payload.timezone
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.delete("/{user_id}", response_model=MessageResponse)
+async def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete your own account")
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    await db.delete(user)
+    await db.commit()
+    return {"message": "User deleted successfully"}

@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraAnsible Vulnerability Celery Beat (hourly scan scheduler)
+After=network.target redis.service
+Wants=redis.service
+
+[Service]
+User=svc-ansible
+Group=svc-ansible
+WorkingDirectory=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend
+EnvironmentFile=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/.env
+ExecStart=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/venv/bin/celery \
+    -A app.tasks.celery_app beat \
+    --loglevel=info \
+    --schedule=/home/svc-ansible/apps/InfraAnsible_Vulnerability/backend/celerybeat-schedule
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

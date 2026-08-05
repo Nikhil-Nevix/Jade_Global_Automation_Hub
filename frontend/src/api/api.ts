@@ -13,6 +13,7 @@ import type {
   ServerCreateRequest,
   ServerUpdateRequest,
   ServerFilters,
+  ServerLocationsResponse,
   Playbook,
   PlaybookFilters,
   Job,
@@ -32,10 +33,17 @@ import type {
   NotificationListResponse,
   NotificationPreferencesResponse,
   UnreadCountResponse,
+  Tag,
+  ScanRun,
+  VulnerabilityFinding,
+  ScanTriggerRequest,
+  SupersetTokenResponse,
+  SupersetCustomizeResponse,
 } from '../types';
+import { getApiBaseUrl } from '../config/network';
 
 // Base API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = getApiBaseUrl();
 
 // Create Axios instance
 const axiosInstance: AxiosInstance = axios.create({
@@ -157,6 +165,16 @@ export const serversApi = {
 
   get: async (id: number): Promise<Server> => {
     const response = await axiosInstance.get<Server>(`/servers/${id}`);
+    return response.data;
+  },
+
+  locations: async (): Promise<ServerLocationsResponse> => {
+    const response = await axiosInstance.get<ServerLocationsResponse>('/servers/locations');
+    return response.data;
+  },
+
+  selectionIds: async (location?: string): Promise<{ server_ids: number[]; count: number }> => {
+    const response = await axiosInstance.get('/servers/ids', { params: { location } });
     return response.data;
   },
 
@@ -511,6 +529,60 @@ export const jobsApi = {
     const response = await axiosInstance.get('/jobs/compliance/firmware-matrix', { params });
     return response.data;
   },
+
+  // List stored report files and pre-parsed summary for a job
+  getJobReports: async (jobId: number): Promise<{
+    success: boolean;
+    job_id: number;
+    report_files: Array<{
+      filename: string;
+      path: string;
+      remote_path: string | null;
+      size_kb: number;
+      type: 'compliance' | 'patch' | 'general';
+      saved_at: string;
+    }>;
+    result_summary: {
+      compliant: number;
+      non_compliant: number;
+      total: number;
+      compliance_pct: number;
+      risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+      status_breakdown: Record<string, number>;
+      headers_by_file: Record<string, string[]>;
+      row_count: number;
+      parsed_at: string;
+    } | Record<string, never>;
+  }> => {
+    const response = await axiosInstance.get(`/jobs/${jobId}/reports`);
+    return response.data;
+  },
+
+  // Download a stored report file as CSV or view as parsed JSON
+  downloadJobReport: async (
+    jobId: number,
+    filename: string,
+    format: 'csv' | 'json' = 'csv'
+  ): Promise<any> => {
+    if (format === 'csv') {
+      const response = await axiosInstance.get(`/jobs/${jobId}/reports/${filename}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return { success: true, filename };
+    }
+    const response = await axiosInstance.get(`/jobs/${jobId}/reports/${filename}`, {
+      params: { format: 'json' },
+    });
+    return response.data;
+  },
 };
 
 // ===== Tickets API =====
@@ -588,7 +660,7 @@ export const notificationsApi = {
   },
 
   markAllAsRead: async (): Promise<void> => {
-    await axiosInstance.put('/notifications/mark-all-read');
+    await axiosInstance.put('/notifications/read-all');
   },
 
   delete: async (id: number): Promise<void> => {
@@ -596,7 +668,7 @@ export const notificationsApi = {
   },
 
   deleteAllRead: async (): Promise<void> => {
-    await axiosInstance.delete('/notifications/delete-all-read');
+    await axiosInstance.delete('/notifications/read-all');
   },
 
   getPreferences: async (): Promise<NotificationPreferencesResponse> => {
@@ -632,4 +704,279 @@ export const healthApi = {
 };
 
 // Export axios instance for custom requests
+// ===== Tags API =====
+
+export const tagsApi = {
+  list: async (category?: string): Promise<{ items: Tag[] }> => {
+    const response = await axiosInstance.get<{ items: Tag[] }>('/tags', {
+      params: category ? { category } : undefined,
+    });
+    return response.data;
+  },
+
+  create: async (data: { name: string; description?: string; category?: string }): Promise<Tag> => {
+    const response = await axiosInstance.post<Tag>('/tags', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: { name?: string; description?: string; category?: string }): Promise<Tag> => {
+    const response = await axiosInstance.put<Tag>(`/tags/${id}`, data);
+    return response.data;
+  },
+
+  sync: async (): Promise<{ message: string }> => {
+    const response = await axiosInstance.post<{ message: string }>('/tags/sync');
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await axiosInstance.delete(`/tags/${id}`);
+  },
+
+  addServers: async (tagId: number, serverIds: number[]): Promise<{ message: string }> => {
+    const response = await axiosInstance.post(`/tags/${tagId}/servers`, serverIds);
+    return response.data;
+  },
+
+  removeServer: async (tagId: number, serverId: number): Promise<{ message: string }> => {
+    const response = await axiosInstance.delete(`/tags/${tagId}/servers/${serverId}`);
+    return response.data;
+  },
+};
+
+// ===== Vulnerability API =====
+
+export const vulnerabilityApi = {
+  listRuns: async (page = 1, perPage = 20): Promise<PaginatedResponse<ScanRun>> => {
+    const response = await axiosInstance.get<PaginatedResponse<ScanRun>>('/vulnerability/runs', {
+      params: { page, per_page: perPage },
+    });
+    return response.data;
+  },
+
+  getRun: async (id: number): Promise<ScanRun> => {
+    const response = await axiosInstance.get<ScanRun>(`/vulnerability/runs/${id}`);
+    return response.data;
+  },
+
+  downloadRunCsv: async (id: number): Promise<{ url: string }> => {
+    const response = await axiosInstance.get(`/vulnerability/runs/${id}/download`);
+    return response.data;
+  },
+
+  triggerScan: async (data: ScanTriggerRequest): Promise<ScanRun> => {
+    const response = await axiosInstance.post<ScanRun>('/vulnerability/runs', data);
+    return response.data;
+  },
+
+  listFindings: async (params?: Record<string, unknown>): Promise<PaginatedResponse<VulnerabilityFinding>> => {
+    const response = await axiosInstance.get<PaginatedResponse<VulnerabilityFinding>>('/vulnerability/findings', {
+      params,
+    });
+    return response.data;
+  },
+
+  qdsDistribution: async (runId?: number, location?: string, environment?: string): Promise<{ buckets: Array<{ range: string; start: number; count: number }> }> => {
+    const response = await axiosInstance.get('/vulnerability/qds-distribution', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  trueRisk: async (runId?: number, location?: string, environment?: string): Promise<{
+    buckets: Array<{ range: string; start: number; count: number }>;
+    top_servers: Array<{ ip: string; dns: string | null; total_score: number; max_score: number; avg_score: number; findings: number }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/true-risk', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  stats: async (runId?: number, location?: string, environment?: string): Promise<{
+    latest_run_id: number | null;
+    total: number;
+    by_severity: Record<string, number>;
+    avg_true_risk_score: number | null;
+    internet_facing_count: number;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/stats', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  slaCompliance: async (runId?: number, location?: string, environment?: string): Promise<{
+    run_id: number | null;
+    compliance: Array<{
+      severity: string; within_sla: number; breached: number;
+      total: number; compliance_pct: number; sla_days: number;
+    }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/sla-compliance', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  trend: async (months = 12, location?: string, environment?: string): Promise<{
+    trend: Array<{
+      run_id: number; month: string; completed_at: string | null;
+      critical: number; high: number; total: number;
+    }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/trend', {
+      params: { months, location, environment },
+    });
+    return response.data;
+  },
+
+  heatmap: async (runId?: number, location?: string, environment?: string): Promise<{
+    run_id: number | null;
+    heatmap: Array<{ asset_criticality: string; critical: number; high: number; medium: number; low: number }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/heatmap', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  internetFacing: async (runId?: number, location?: string, environment?: string): Promise<{
+    run_id: number | null;
+    total_internet_facing: number;
+    critical_high_count: number;
+    top_assets: Array<{
+      ip: string; dns: string | null; owner: string | null; criticality: string | null;
+      total: number; critical: number; high: number;
+    }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/internet-facing', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  ageing: async (runId?: number, location?: string, environment?: string): Promise<{
+    run_id: number | null;
+    age_available: boolean;
+    buckets: Array<{ bucket: string; critical: number; high: number; medium: number; low: number }>;
+    avg_age: Array<{ severity: string; avg_days: number; count: number }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/ageing', {
+      params: { run_id: runId, location, environment },
+    });
+    return response.data;
+  },
+
+  ageingFindings: async (params: {
+    runId?: number; location?: string; environment?: string; minDays?: number; maxDays?: number;
+    page?: number; perPage?: number;
+  }): Promise<{
+    run_id: number | null;
+    items: Array<{
+      days_open: number; severity: string; ip: string | null; dns: string | null;
+      cve_id: string | null; title: string | null; location: string | null;
+      first_detected: string | null;
+    }>;
+    pagination: { page: number; per_page: number; total: number; pages: number };
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/ageing/findings', {
+      params: {
+        run_id: params.runId, location: params.location, environment: params.environment,
+        min_days: params.minDays, max_days: params.maxDays,
+        page: params.page, per_page: params.perPage,
+      },
+    });
+    return response.data;
+  },
+
+  ageingFindingsExport: async (params: {
+    runId?: number; location?: string; environment?: string;
+    minDays?: number; maxDays?: number;
+  }): Promise<{ blob: Blob; filename: string }> => {
+    const response = await axiosInstance.get('/vulnerability/ageing/findings/export', {
+      params: {
+        run_id: params.runId, location: params.location, environment: params.environment,
+        min_days: params.minDays, max_days: params.maxDays,
+      },
+      responseType: 'blob',
+    });
+    // pull the server-suggested filename out of Content-Disposition
+    const cd = response.headers['content-disposition'] || '';
+    const match = /filename="?([^"]+)"?/.exec(cd);
+    return { blob: response.data as Blob, filename: match?.[1] || 'ageing_vulnerabilities.csv' };
+  },
+
+  locationStats: async (runId?: number): Promise<{
+    run_id: number | null;
+    location_available: boolean;
+    locations: Array<{
+      location: string; asset_count: number; total_vulns: number;
+      critical: number; high: number; medium: number; low: number;
+    }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/location-stats', {
+      params: runId !== undefined ? { run_id: runId } : undefined,
+    });
+    return response.data;
+  },
+
+  environmentStats: async (runId?: number): Promise<{
+    run_id: number | null;
+    environment_available: boolean;
+    environments: Array<{
+      environment: string; asset_count: number; total_vulns: number;
+      critical: number; high: number; medium: number; low: number;
+    }>;
+  }> => {
+    const response = await axiosInstance.get('/vulnerability/environment-stats', {
+      params: runId !== undefined ? { run_id: runId } : undefined,
+    });
+    return response.data;
+  },
+};
+
+// ===== Superset API =====
+
+export const supersetApi = {
+  guestToken: async (runId?: number): Promise<SupersetTokenResponse> => {
+    const response = await axiosInstance.get<SupersetTokenResponse>('/superset/guest-token', {
+      params: runId !== undefined ? { run_id: runId } : undefined,
+    });
+    return response.data;
+  },
+  customize: async (): Promise<SupersetCustomizeResponse> => {
+    const response = await axiosInstance.get<SupersetCustomizeResponse>('/superset/customize');
+    return response.data;
+  },
+};
+
+/**
+ * Open the customer's private Superset dashboard in the editor (new tab).
+ * Provisions the workspace, then writes a one-time auto-submitting login form so
+ * the new tab gets a real Superset session on Superset's own origin, landing in
+ * edit mode.
+ */
+export async function openSupersetEditor(): Promise<void> {
+  const ws = await supersetApi.customize();
+  const win = window.open('', '_blank');
+  if (!win) {
+    throw new Error('Popup blocked — allow popups for this site to customize the dashboard.');
+  }
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // FAB reads the post-login redirect from the ?next= query param (must be a
+  // local/relative path for its safe-redirect check).
+  const action = `${ws.superset_domain}/login/?next=${encodeURIComponent(ws.edit_path)}`;
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Opening editor…</title></head>
+<body style="font-family:system-ui;padding:2rem;color:#334155">Opening your dashboard editor…
+<form id="f" method="POST" action="${esc(action)}">
+  <input type="hidden" name="username" value="${esc(ws.username)}">
+  <input type="hidden" name="password" value="${esc(ws.password)}">
+</form>
+<script>document.getElementById('f').submit();</script>
+</body></html>`);
+  win.document.close();
+}
+
 export default axiosInstance;

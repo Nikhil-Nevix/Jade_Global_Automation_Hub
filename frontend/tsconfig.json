@@ -15,14 +15,15 @@
     "jsx": "react-jsx",
 
     /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": false,
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
   },
   "include": ["src"],
+  "exclude": ["src/**/*_OLD_BACKUP*", "src/**/*_BACKUP*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

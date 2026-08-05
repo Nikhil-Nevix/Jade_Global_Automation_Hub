@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Menu, LogOut, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
@@ -13,6 +14,7 @@ import { getUserTimezone } from '../../utils/timezone';
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuthStore();
   const { toggleSidebar } = useUIStore();
+  const navigate = useNavigate();
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -31,7 +33,7 @@ export const Navbar: React.FC = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      window.location.href = '/login';
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout failed:', error);
     }

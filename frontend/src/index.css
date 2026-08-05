@@ -93,3 +93,18 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #6B7280;
 }
+
+/* ─── Embedded Superset dashboard iframe ─────────────────────────────────────
+   The @superset-ui/embedded-sdk injects a bare <iframe> with no size, so it
+   defaults to ~300x150px and the dashboard looks cramped/broken. Force it to
+   fill the container with a tall height so all chart rows render. */
+.superset-embed {
+  width: 100%;
+}
+.superset-embed iframe {
+  width: 100%;
+  min-height: 2400px;
+  height: 100%;
+  border: 0;
+  display: block;
+}

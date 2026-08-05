@@ -14,7 +14,7 @@ class SocketService {
   /**
    * Initialize WebSocket connection
    */
-  connect(url: string = 'http://localhost:5000'): void {
+  connect(url: string = 'http://localhost:5000', path: string = '/socket.io'): void {
     if (this.socket?.connected) {
       console.log('[WebSocket] Already connected');
       return;
@@ -37,6 +37,7 @@ class SocketService {
     console.log(`[WebSocket] Connecting to ${url} (attempt ${this.connectionAttempts}/${this.maxConnectionAttempts})...`);
 
     this.socket = io(url, {
+      path,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 3,

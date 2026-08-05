@@ -200,7 +200,7 @@ celery:results: { task1: "success", task2: "pending" }
 
 ---
 
-## 🗄️ 5️⃣ Database (MySQL / MariaDB)
+## 🗄️ 5️⃣ Database (MySQL 8.4.9)
 
 **What it is:**
 - Permanent storage
@@ -228,7 +228,7 @@ celery:results: { task1: "success", task2: "pending" }
 > Everything is saved here → Backend decides what to read/write → Source of truth
 
 **Technology Stack:**
-- MySQL 8.0+ or MariaDB 10.5+
+- MySQL Community 8.4.9 (service: `mysqld`)
 - SQLAlchemy ORM
 - PyMySQL driver
 

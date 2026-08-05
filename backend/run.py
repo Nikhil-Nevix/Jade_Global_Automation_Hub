@@ -1,28 +1,5 @@
-"""
-Application Entry Point
-Runs the Flask development server with WebSocket support
-"""
-import os
-from dotenv import load_dotenv
+"""Dev entry point: `python run.py` launches Uvicorn with reload (merged app: port 8001)."""
+import uvicorn
 
-# Load environment variables from .env file
-load_dotenv()
-
-from app import create_app
-from app.extensions import celery, socketio
-
-# Create Flask app
-app = create_app()
-print("backend loaded successfully")
-
-# Make celery app available
-celery_app = celery
-
-if __name__ == '__main__':
-    # Get host and port from environment
-    host = os.getenv('FLASK_HOST', '0.0.0.0')
-    port = int(os.getenv('FLASK_PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    
-    # Run development server with WebSocket support
-    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=True)
